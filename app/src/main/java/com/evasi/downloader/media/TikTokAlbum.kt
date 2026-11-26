@@ -93,7 +93,7 @@ internal object TikTokAlbum {
     }
 
     private fun album(item: JSONObject, id: String, expectPhoto: Boolean = false): MediaPost? {
-        if (item.optBoolean("privateItem")) throw MediaFailure(FailureReason.UNAVAILABLE)
+        if (item.optBoolean("privateItem")) throw MediaFailure(FailureReason.PRIVATE)
         if (item.isNull("imagePost")) {
             val video = item.optJSONObject("video")
             if (expectPhoto && (video == null || listOf("playAddr", "downloadAddr", "bitrateInfo").none { !video.isNull(it) }))
@@ -114,7 +114,8 @@ internal object TikTokAlbum {
             MediaItem(MediaKind.PHOTO, listOf(MediaSource(url, quality = quality, name = "TikTok-$id-${index + 1}",
                 referer = "https://www.tiktok.com/", deliveryCdn = MediaCdn.TIKTOK)))
         }
-        return MediaPost(items, item.optString("desc").take(120))
+        return MediaPost(items, item.caption("author") ?: "TikTok", description = item.caption("desc"),
+            previewUrl = items.firstOrNull()?.sources?.firstOrNull()?.uri)
     }
 
     private fun isImageUrl(value: String): Boolean {

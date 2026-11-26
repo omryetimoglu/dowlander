@@ -21,8 +21,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.getValue
+import com.evasi.downloader.share.CompletedShare
+import com.evasi.downloader.ui.QueueScreen
+import com.evasi.downloader.ui.HistoryScreen
+import com.evasi.downloader.ui.PreferencesScreen
 import com.evasi.downloader.ui.DownloaderApp
-import com.evasi.downloader.ui.Phase
 import com.evasi.downloader.ui.Source
 import com.evasi.downloader.ui.UiEvent
 import kotlinx.coroutines.launch
@@ -48,7 +51,18 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val state by model.session.state.collectAsStateWithLifecycle()
-            DownloaderApp(state, ::onUiEvent)
+            val settings by model.settings.collectAsStateWithLifecycle()
+            DownloaderApp(state, settings.appearance,
+                downloads = { QueueScreen(model.queue) },
+                history = { HistoryScreen(model.queue) },
+                settings = {
+                    PreferencesScreen(settings, ::changeSettings,
+                        onNotificationSettings = { onUiEvent(UiEvent.NotificationSettings) },
+                        onClearHistory = { model.queue.clearHistory() },
+                        onClearCache = { clearPreviewCache(applicationContext) })
+                },
+                postText = { CompletedShare(state.savedUris, state.description) },
+                onEvent = ::onUiEvent)
         }
     }
 
@@ -84,8 +98,6 @@ class MainActivity : ComponentActivity() {
     }
 
     internal fun readClipboard(manual: Boolean) {
-        val state = model.session.state.value
-        if (!manual && state.phase == Phase.Downloading) return
         val record = model.prefs.clipboard
         val clip = try {
             if (!manual) {
@@ -108,6 +120,26 @@ class MainActivity : ComponentActivity() {
         if (manual || record.isNew(link, timestamp)) {
             model.prefs.markClipboard(link, timestamp)
             model.session.accept(Incoming.Link(link), Source.Clipboard)
+        }
+    }
+
+    private fun changeSettings(transform: (AppSettings) -> AppSettings) {
+        lifecycleScope.launch {
+            var policyChanged = false
+            var language = model.prefs.language
+            try {
+                model.prefs.update { current ->
+                    transform(current).also { next ->
+                        policyChanged = current.wifiOnly != next.wifiOnly || current.concurrentDownloads != next.concurrentDownloads
+                        language = next.language
+                    }
+                }
+            } catch (_: java.io.IOException) {
+                toast(R.string.pref_save_error)
+                return@launch
+            }
+            if (policyChanged) model.queue.settingsChanged()
+            if (resources.configuration.locales[0].language != language && !isFinishing && !isDestroyed) recreate()
         }
     }
 

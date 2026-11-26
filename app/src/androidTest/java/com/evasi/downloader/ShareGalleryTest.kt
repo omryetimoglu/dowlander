@@ -123,7 +123,7 @@ class ShareGalleryTest {
         val selection = "${MediaStore.MediaColumns.IS_PENDING}=0 AND ${MediaStore.MediaColumns.MIME_TYPE}=? " +
             "AND ${MediaStore.MediaColumns.SIZE}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
         resolver.query(images, arrayOf(MediaStore.MediaColumns._ID), selection,
-            arrayOf("image/gif", bytes.size.toString(), "Pictures/eVasi Downloader App/"), null)?.use { rows ->
+            arrayOf("image/gif", bytes.size.toString(), "Pictures/eVasi Video Downloader/"), null)?.use { rows ->
             while (rows.moveToNext()) {
                 val uri = ContentUris.withAppendedId(images, rows.getLong(0))
                 val actual = resolver.openInputStream(uri)?.use { it.readBytes() }

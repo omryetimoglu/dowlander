@@ -4,25 +4,14 @@ import android.content.ContentUris
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
-import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
-import com.evasi.downloader.DownloadSession
-import com.evasi.downloader.Incoming
 import com.evasi.downloader.SharedLinks
-import com.evasi.downloader.TransferBackend
-import com.evasi.downloader.ui.Phase
-import com.evasi.downloader.ui.Source
-import com.evasi.downloader.ui.UiEvent
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -120,25 +109,11 @@ class AlbumDownloadTest {
             assets[url]?.connection(uri) ?: throw IOException("Unexpected album request: $uri")
         }
         val rows = mutableListOf<Uri>()
-        val backend = object : TransferBackend {
-            override suspend fun resolve(input: Incoming) = repo.resolve((input as Incoming.Link).url)
-            override suspend fun save(item: MediaItem, quality: Quality?, progress: (Long, Long?) -> Unit): String {
-                val row = repo.save(item, quality, progress)
-                rows += row
-                return row.toString()
-            }
-        }
         try {
-            withContext(Dispatchers.Main) {
-                val session = DownloadSession(this, backend, "en", true, SystemClock::elapsedRealtime)
-                session.accept(Incoming.Link(requireNotNull(SharedLinks.extract("Album: $link"))), Source.Clipboard)
-                session.event(UiEvent.ControlsReady(session.state.value.controlsGeneration))
-                val done = withTimeout(60_000) { session.state.first { it.phase == Phase.Saved || it.phase == Phase.Failed } }
-                assertEquals("Error: ${done.error}, HTTP requests: $requests", Phase.Saved, done.phase)
-                assertEquals(expected.size, done.total)
-                assertEquals(expected.size, done.savedCount)
-                assertEquals(rows.last().toString(), session.galleryUri)
-            }
+            val copied = requireNotNull(SharedLinks.extract("Album: $link"))
+            val post = repo.resolve(copied)
+            assertEquals(expected.size, post.items.size)
+            post.items.forEach { item -> rows += repo.save(item, null) { _, _ -> } }
             assertEquals(listOf(page.url) + expected.map { it.url }, requests)
             assertEquals(expected.size, rows.distinct().size)
             expected.zip(rows).forEach { (asset, row) -> assertPublished(asset, row) }
@@ -159,7 +134,7 @@ class AlbumDownloadTest {
             assertTrue(cursor.moveToFirst())
             assertEquals(asset.mime, cursor.getString(0))
             val folder = if (video) "Movies" else "Pictures"
-            assertEquals("$folder/eVasi Downloader App/", cursor.getString(1))
+            assertEquals("$folder/eVasi Video Downloader/", cursor.getString(1))
             assertEquals(0, cursor.getInt(2))
         }
         assertArrayEquals(asset.url, asset.bytes, requireNotNull(resolver.openInputStream(row)).use { it.readBytes() })

@@ -25,7 +25,11 @@ internal object XPost {
         if (tweet.isNull("id_str") || tweet.optString("__typename") == "TweetTombstone") {
             throw MediaFailure(FailureReason.UNAVAILABLE)
         }
-        return MediaPost(mediaItems(tweet), tweet.optJSONObject("user")?.optString("name").orEmpty().take(100))
+        val items = mediaItems(tweet)
+        val poster = tweet.optJSONArray("mediaDetails")?.optJSONObject(0)?.caption("media_url_https")
+            ?: tweet.optJSONObject("video").caption("poster") ?: items.firstOrNull()?.takeIf { it.kind == MediaKind.PHOTO }?.sources?.firstOrNull()?.uri
+        return MediaPost(items, tweet.optJSONObject("user")?.optString("name").orEmpty().take(100),
+            description = tweet.caption("full_text") ?: tweet.caption("text"), previewUrl = preview(poster, MediaCdn.X_PHOTO))
     }
 
     private fun mediaItems(tweet: JSONObject): List<MediaItem> {
@@ -45,15 +49,16 @@ internal object XPost {
                     "animated_gif" -> MediaKind.GIF
                     else -> continue
                 }
-                val variants = detail.optJSONObject("video_info")?.optJSONArray("variants")
-                items += videoItem(kind, variants, name, "url", "content_type")
+                val info = detail.optJSONObject("video_info")
+                val variants = info?.optJSONArray("variants")
+                items += videoItem(kind, variants, name, "url", "content_type", info?.optLong("duration_millis") ?: 0L)
             }
         }
         if (items.isEmpty()) {
             // Some embeds expose only video.variants, with src/type instead of url/content_type.
             val video = tweet.optJSONObject("video")
             if (video != null) {
-                items += videoItem(MediaKind.VIDEO, video.optJSONArray("variants"), "X-$id-1", "src", "type")
+                items += videoItem(MediaKind.VIDEO, video.optJSONArray("variants"), "X-$id-1", "src", "type", video.optLong("durationMs"))
             } else {
                 val photos = tweet.optJSONArray("photos") ?: return emptyList()
                 for (index in 0 until photos.length()) {
@@ -81,7 +86,7 @@ internal object XPost {
         return MediaItem(MediaKind.PHOTO, listOf(MediaSource(original, quality = size, name = name, deliveryCdn = MediaCdn.X_PHOTO)))
     }
 
-    private fun videoItem(kind: MediaKind, variants: JSONArray?, name: String, urlKey: String, typeKey: String): MediaItem {
+    private fun videoItem(kind: MediaKind, variants: JSONArray?, name: String, urlKey: String, typeKey: String, durationMs: Long): MediaItem {
         val sources = (0 until (variants?.length() ?: 0)).mapNotNull { index ->
             val variant = variants?.optJSONObject(index) ?: return@mapNotNull null
             if (variant.optString(typeKey) != "video/mp4") return@mapNotNull null
@@ -91,9 +96,12 @@ internal object XPost {
             val size = dimensions.find(uri.path.orEmpty())?.destructured?.let { (width, height) ->
                 Quality(width.toInt(), height.toInt())
             }
-            MediaSource(url, "video/mp4", size, name, deliveryCdn = MediaCdn.X_VIDEO) to variant.optLong("bitrate")
-        }.sortedWith(compareByDescending<Pair<MediaSource, Long>> { it.second }
-            .thenByDescending { it.first.quality?.let { size -> size.width.toLong() * size.height } ?: 0L })
+            val bitrate = variant.optLong("bitrate")
+            val bytes = variant.bytes("filesize") ?: if (bitrate > 0 && durationMs > 0)
+                (bitrate.toDouble() * durationMs / 8000).toLong() else null
+            MediaSource(url, "video/mp4", size, name, deliveryCdn = MediaCdn.X_VIDEO, estimatedBytes = bytes) to bitrate
+        }.sortedWith(compareByDescending<Pair<MediaSource, Long>> { it.first.quality?.let { size -> size.width.toLong() * size.height } ?: 0L }
+            .thenByDescending { it.second })
             .map { it.first }.distinctBy { it.uri }
         if (sources.isEmpty()) throw MediaFailure(FailureReason.UNSUPPORTED)
         return MediaItem(kind, sources)

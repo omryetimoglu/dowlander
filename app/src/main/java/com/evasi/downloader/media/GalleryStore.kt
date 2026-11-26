@@ -10,10 +10,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import java.io.IOException
 import java.io.InputStream
+import java.net.SocketTimeoutException
 import java.util.UUID
 
 internal class GalleryStore(context: Context, private val recovery: Recovery = processRecovery) {
     private val resolver = context.contentResolver
+    private val receipts = context.getSharedPreferences("gallery_receipts", Context.MODE_PRIVATE)
     private val pending = context.getSharedPreferences("gallery_pending", Context.MODE_PRIVATE)
 
     // The first save/recovery takes one snapshot per process. Later journal entries belong
@@ -25,7 +27,6 @@ internal class GalleryStore(context: Context, private val recovery: Recovery = p
 
     private companion object {
         val processRecovery = Recovery()
-        const val album = "eVasi Downloader App"
         const val retryDelayMs = 5_000L
     }
 
@@ -79,21 +80,24 @@ internal class GalleryStore(context: Context, private val recovery: Recovery = p
     fun write(
         input: InputStream, declared: String?, name: String?, total: Long?, readFailure: FailureReason,
         kind: MediaKind?, job: Job, onInsert: (Uri) -> Unit, onProgress: (Long, Long?) -> Unit,
+        album: String = DEFAULT_ALBUM, outputKey: String? = null,
     ): Uri {
         job.ensureActive()
         val stream = input.buffered(64 * 1024)
         val format = try {
             MediaFormat.inspect(stream, declared)
         } catch (error: IOException) {
-            throw MediaFailure(readFailure, error)
+            throw sourceFailure(readFailure, error)
         }
         if ((kind == MediaKind.VIDEO && !format.isVideo) || (kind == MediaKind.PHOTO && format.isVideo) ||
             (kind == MediaKind.GIF && !format.isVideo && format.extension !in setOf("gif", "webp", "avif"))) {
             throw MediaFailure(FailureReason.INVALID)
         }
-        val row = insert(format, name)
+        val row = insert(format, name, normalizeAlbum(album))
         onInsert(row)
         if (!pending.edit().putBoolean(row.toString(), true).commit()) throw MediaFailure(FailureReason.STORAGE)
+        if (outputKey != null && !receipts.edit().putString(outputKey, row.toString()).commit())
+            throw MediaFailure(FailureReason.STORAGE)
         var bytes = 0L
         var lastProgress = 0L
         onProgress(0, total)
@@ -103,7 +107,7 @@ internal class GalleryStore(context: Context, private val recovery: Recovery = p
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
                     job.ensureActive()
-                    val count = try { stream.read(buffer) } catch (e: IOException) { throw MediaFailure(readFailure, e) }
+                    val count = try { stream.read(buffer) } catch (e: IOException) { throw sourceFailure(readFailure, e) }
                     if (count < 0) break
                     if (count == 0 || (total != null && count > total - bytes)) throw MediaFailure(readFailure)
                     it.write(buffer, 0, count)
@@ -127,7 +131,7 @@ internal class GalleryStore(context: Context, private val recovery: Recovery = p
         return row
     }
 
-    private fun insert(format: MediaFormat, hint: String?): Uri {
+    private fun insert(format: MediaFormat, hint: String?, album: String): Uri {
         val collection = if (format.isVideo) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                          else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val folder = if (format.isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
@@ -142,14 +146,58 @@ internal class GalleryStore(context: Context, private val recovery: Recovery = p
         return storage { resolver.insert(collection, values) } ?: throw MediaFailure(FailureReason.STORAGE)
     }
 
+    /** A worker may have published the row immediately before process death and before its Room commit. */
+    fun publishedOutput(key: String): Uri? {
+        val value = receipts.getString(key, null) ?: return null
+        val row = Uri.parse(value)
+        val existing = storage {
+            val fields = arrayOf(MediaStore.MediaColumns.IS_PENDING, MediaStore.MediaColumns.SIZE)
+            val cursor = resolver.query(row, fields, null, null, null) ?: throw MediaFailure(FailureReason.STORAGE)
+            cursor.use {
+                if (!it.moveToFirst() || it.getInt(0) != 0) return@use false
+                // Some providers refresh the indexed size asynchronously after publication.
+                it.getLong(1) > 0 || resolver.openFileDescriptor(row, "r")?.use { fd -> fd.statSize > 0 } == true
+            }
+        }
+        return row.takeIf { existing }
+    }
+
+    fun forgetOutput(key: String) {
+        receipts.edit().remove(key).apply()
+    }
+
     private inline fun <T> storage(action: () -> T): T {
         try {
             return action()
         } catch (e: IOException) {
-            throw MediaFailure(FailureReason.STORAGE, e)
+            throw MediaFailure(storageFailure(e), e)
         } catch (e: RuntimeException) {
             if (e is java.util.concurrent.CancellationException) throw e
-            throw MediaFailure(FailureReason.STORAGE, e)
+            throw MediaFailure(storageFailure(e), e)
         }
     }
 }
+
+const val DEFAULT_ALBUM = "eVasi Video Downloader"
+
+/** User-selected folder relative to the system Pictures/Movies collection. */
+internal fun normalizeAlbum(value: String): String {
+    val path = value.trim().ifEmpty { DEFAULT_ALBUM }
+    val parts = path.split('/')
+    if (path.length > 160 || parts.any { it.isBlank() || it == "." || it == ".." || it.length > 80 ||
+            it != it.trim() || it.startsWith('.') || it.any { ch -> ch.code < 32 || ch in "\\:*?\"<>|" } }) {
+        throw MediaFailure(FailureReason.STORAGE)
+    }
+    return path
+}
+
+private fun storageFailure(error: Throwable): FailureReason {
+    if (error is SecurityException) return FailureReason.PERMISSION
+    return if (generateSequence(error) { it.cause }.any {
+        (it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC) ||
+            it.message.orEmpty().contains("no space left", true)
+    }) FailureReason.NO_SPACE else FailureReason.STORAGE
+}
+
+private fun sourceFailure(fallback: FailureReason, error: IOException): MediaFailure =
+    MediaFailure(if (error is SocketTimeoutException) FailureReason.TIMEOUT else fallback, error)

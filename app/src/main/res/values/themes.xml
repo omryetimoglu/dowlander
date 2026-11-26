@@ -3,7 +3,7 @@
     <style name="Theme.Evasi" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:windowBackground">#F8F9F5</item>
-        <item name="android:colorAccent">#176752</item>
+        <item name="android:windowBackground">#F4F5FB</item>
+        <item name="android:colorAccent">#465CC6</item>
     </style>
 </resources>

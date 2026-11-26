@@ -8,6 +8,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import android.database.MatrixCursor
 import android.net.Uri
@@ -15,8 +16,13 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore.MediaColumns
 import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
+import com.evasi.downloader.Incoming
+import com.evasi.downloader.sharedInput
+import com.evasi.downloader.queue.QueueInputs
+import java.util.UUID
 import com.evasi.downloader.DownloadModel
 import com.evasi.downloader.MainActivity
 import com.evasi.downloader.Preferences
@@ -58,8 +64,14 @@ class GalleryPublicationTest {
 
     @Before fun registerProvider() {
         val app = ApplicationProvider.getApplicationContext<Context>()
+        // Robolectric gives each test a fresh filesDir in the same JVM. Attach the manifest
+        // provider so AndroidX resolves its paths against this test's application directory.
+        val authority = "${app.packageName}.queue-inputs"
+        val info = requireNotNull(app.packageManager.resolveContentProvider(authority, PackageManager.GET_META_DATA))
+        val stagedFiles = FileProvider().apply { attachInfo(app, info) }
+        ShadowContentResolver.registerProviderInternal(authority, stagedFiles)
         media = FileMediaProvider(temp.root)
-        media.attachInfo(app, ProviderInfo().apply { authority = "media"; exported = true })
+        media.attachInfo(app, ProviderInfo().apply { this.authority = "media"; exported = true })
         ShadowContentResolver.registerProviderInternal("media", media)
         repo = MediaRepository(app)
     }
@@ -71,7 +83,7 @@ class GalleryPublicationTest {
         val output = repo.save(item, null) { _, _ -> }
         assertEquals(media.lastInserted, output)
         assertEquals("image/gif", media.values.getAsString(MediaColumns.MIME_TYPE))
-        assertEquals("Pictures/eVasi Downloader App/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
+        assertEquals("Pictures/eVasi Video Downloader/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
         assertTrue(output.path.orEmpty().contains("/images/media/"))
         assertEquals(listOf("pending", "write", "publish"), media.events)
         assertArrayEquals(gif, media.output.readBytes())
@@ -82,7 +94,22 @@ class GalleryPublicationTest {
         assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, viewer.flags)
     }
 
-    @Test fun multipleSharedPhotosCopiedOnceInSenderOrder() {
+    @Test fun queuedRetryReusesPublishedFileAndSelectedSubfolder() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        media.source.writeBytes(gifWithComment(1))
+        val item = repo.resolveShared(media.sourceUri, "image/gif").items.single()
+        val original = repo.save(item, null, "Work/Clips", "job-1") { _, _ -> }
+        val resumed = MediaRepository(app)
+        media.declaredSize = 0 // The provider has not indexed the just-published row yet.
+        assertEquals(original, resumed.publishedOutput("job-1"))
+        assertEquals(original, resumed.save(item, null, "Work/Clips", "job-1") { _, _ -> })
+        assertEquals("Pictures/Work/Clips/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
+        assertEquals(listOf("pending", "write", "publish"), media.events)
+        resumed.forgetOutput("job-1")
+        assertNull(resumed.publishedOutput("job-1"))
+    }
+
+    @Test fun multipleSharedPhotosRemainReadableInSenderOrderAfterOriginalsAreRemoved() = runBlocking {
         val first = gifWithComment(1)
         val second = gifWithComment(2)
         media.source.writeBytes(first)
@@ -90,22 +117,44 @@ class GalleryPublicationTest {
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).setType("image/gif")
             .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(media.secondUri, media.sourceUri))
         intent.clipData = ClipData.newRawUri("images", media.secondUri).apply { addItem(ClipData.Item(media.sourceUri)) }
-        val controller = Robolectric.buildActivity(MainActivity::class.java, intent).create().start().resume()
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val staged = QueueInputs(app)
+        val jobId = UUID.randomUUID().toString()
         try {
-            val activity = controller.get()
-            val session = ViewModelProvider(activity)[DownloadModel::class.java].session
-            for (attempt in 1..1500) {
-                if (session.state.value.phase in setOf(Phase.Saved, Phase.Failed)) break
-                shadowOf(Looper.getMainLooper()).idle()
-                Thread.sleep(10)
+            val payload = staged.prepare(sharedInput(intent), jobId)
+            val restored = staged.restore(payload.payload) as Incoming.Files
+            assertEquals(2, restored.uris.size)
+            assertTrue(media.source.delete())
+            assertTrue(media.secondSource.delete())
+            for ((index, url) in restored.uris.withIndex()) {
+                val item = repo.resolveShared(Uri.parse(url), restored.mime).items.single()
+                repo.save(item, null) { _, _ -> }
+                assertArrayEquals(listOf(second, first)[index], media.output.readBytes())
             }
-            assertEquals(Phase.Saved, session.state.value.phase)
-            assertEquals(2, session.state.value.savedCount)
-            assertArrayEquals(second, File(temp.root, "row-1").readBytes())
-            assertArrayEquals(first, File(temp.root, "row-2").readBytes())
-        } finally {
-            controller.pause().stop().destroy()
-        }
+        } finally { staged.discard(jobId) }
+    }
+
+    @Test fun queueRecognizesTheSameSharedBytesAndRejectsTruncatedInputBeforeInsertion() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val inputs = QueueInputs(app)
+        val bytes = gifWithComment(61)
+        val original = Incoming.Files(listOf(media.sourceUri.toString()), "image/gif")
+        val alternate = Incoming.Files(listOf(media.secondUri.toString()), "image/gif")
+        val ids = List(4) { UUID.randomUUID().toString() }
+        try {
+            media.source.writeBytes(bytes)
+            media.secondSource.writeBytes(bytes)
+            val first = inputs.prepare(original, ids[0])
+            assertEquals(first.dedupeKey, inputs.prepare(alternate, ids[1]).dedupeKey)
+            media.secondSource.writeBytes(gifWithComment(62))
+            assertNotEquals(first.dedupeKey, inputs.prepare(alternate, ids[2]).dedupeKey)
+            media.declaredSize = bytes.size + 1L
+            try {
+                inputs.prepare(original, ids[3])
+                fail("Expected truncated stream rejection")
+            } catch (failure: MediaFailure) { assertEquals(FailureReason.INVALID, failure.reason) }
+            assertFalse(File(app.filesDir, "queue-inputs/" + ids[3]).exists())
+        } finally { ids.forEach(inputs::discard) }
     }
 
     @Test fun truncatedInputDeletesItsPendingRow() = runBlocking {
@@ -270,7 +319,6 @@ class GalleryPublicationTest {
                 val initial = model.session.state.value
                 assertEquals(Source.Share, initial.source)
                 assertEquals(url, initial.link)
-                assertNull(initial.countdown)
                 val main = shadowOf(Looper.getMainLooper())
                 // Run actual main-dispatcher continuations while network and file IO run on Dispatchers.IO.
                 for (attempt in 1..900) {
@@ -339,7 +387,7 @@ class GalleryPublicationTest {
                 }
                 addRow(columns.map { column -> when (column) {
                     OpenableColumns.DISPLAY_NAME -> sourceFor(uri)?.name
-                    OpenableColumns.SIZE -> declaredSize ?: sourceFor(uri)?.length()
+                    OpenableColumns.SIZE -> declaredSize ?: (sourceFor(uri) ?: output).length()
                     MediaColumns.IS_PENDING -> values.getAsInteger(MediaColumns.IS_PENDING)
                     else -> null
                 } })

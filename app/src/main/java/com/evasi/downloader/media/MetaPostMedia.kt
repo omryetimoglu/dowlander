@@ -24,7 +24,13 @@ internal object MetaPostMedia {
             listOf(post)
         }
         val title = (post.optJSONObject("user") ?: post.optJSONObject("owner"))?.optString("username").orEmpty()
-        return MediaPost(nodes.mapIndexed { i, node -> item(node, "$platform-$code-${i + 1}", referer) }, title)
+        val items = nodes.mapIndexed { i, node -> item(node, "$platform-$code-${i + 1}", referer) }
+        val first = nodes.first()
+        val poster = first.optJSONObject("image_versions2")?.optJSONArray("candidates")?.optJSONObject(0).caption("url")
+            ?: first.caption("display_url") ?: items.first().takeIf { it.kind == MediaKind.PHOTO }?.sources?.firstOrNull()?.uri
+        val caption = post.optJSONObject("caption").caption("text")
+            ?: post.optJSONObject("edge_media_to_caption")?.optJSONArray("edges")?.optJSONObject(0)?.optJSONObject("node").caption("text")
+        return MediaPost(items, title, caption, preview(poster, MediaCdn.META))
     }
 
     private fun kind(node: JSONObject): MediaKind? = when {
@@ -38,11 +44,11 @@ internal object MetaPostMedia {
     private fun item(node: JSONObject, name: String, referer: String): MediaItem {
         val kind = kind(node) ?: unavailable()
         val sources = mutableListOf<MediaSource>()
-        fun add(url: String, w: Int, h: Int) {
+        fun add(url: String, w: Int, h: Int, bytes: Long? = null) {
             val uri = runCatching { URI(url) }.getOrNull() ?: return
             if (!MediaCdn.META.accepts(uri)) return
             val size = if (w > 0 && h > 0) Quality(w, h) else null
-            sources += MediaSource(url, quality = size, name = name, referer = referer, deliveryCdn = MediaCdn.META)
+            sources += MediaSource(url, quality = size, name = name, referer = referer, deliveryCdn = MediaCdn.META, estimatedBytes = bytes)
         }
 
         val variants = if (kind == MediaKind.PHOTO) node.optJSONObject("image_versions2")?.optJSONArray("candidates")
@@ -51,7 +57,7 @@ internal object MetaPostMedia {
             val variant = variants.optJSONObject(i) ?: continue
             add(variant.optString("url", variant.optString("src")),
                 variant.optInt("width", variant.optInt("config_width")),
-                variant.optInt("height", variant.optInt("config_height")))
+                variant.optInt("height", variant.optInt("config_height")), variant.bytes("file_size"))
         }
         val dim = node.optJSONObject("dimensions")
         add(node.optString(if (kind == MediaKind.PHOTO) "display_url" else "video_url"),

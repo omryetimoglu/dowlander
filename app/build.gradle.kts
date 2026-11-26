@@ -1,8 +1,26 @@
+import java.net.URI
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.kapt")
 }
+
+val appConfig = Properties().apply {
+    rootProject.file("config/app.properties").inputStream().use { load(it) }
+}
+fun option(key: String) = providers.gradleProperty(key).orElse(providers.environmentVariable(key))
+    .getOrElse(appConfig.getProperty(key, "")).trim()
+fun releaseOption(key: String) = providers.gradleProperty(key).orElse(providers.environmentVariable(key)).orNull
+fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+val xClient = option("EVASI_X_CLIENT_ID")
+val xRedirect = option("EVASI_X_REDIRECT_URI")
+val callback = URI(xRedirect.ifBlank { "com.evasi.downloader.unconfigured://oauth/disabled" })
+require((callback.scheme == "https" || callback.scheme.orEmpty().matches(Regex("[a-z][a-z0-9.-]*[.][a-z0-9.-]+"))) &&
+    callback.host != null && callback.rawPath.orEmpty().startsWith("/") && callback.userInfo == null &&
+    callback.query == null && callback.fragment == null && callback.port == -1) { "Invalid EVASI_X_REDIRECT_URI" }
 
 android {
     namespace = "com.evasi.downloader"
@@ -12,9 +30,27 @@ android {
         applicationId = "com.evasi.downloader"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "2.0.0"
+        buildConfigField("String", "X_CLIENT_ID", quoted(xClient))
+        buildConfigField("String", "X_REDIRECT_URI", quoted(xRedirect))
+        resValue("string", "support_email", option("EVASI_SUPPORT_EMAIL"))
+        manifestPlaceholders["oauthScheme"] = callback.scheme
+        manifestPlaceholders["oauthHost"] = callback.host
+        manifestPlaceholders["oauthPath"] = callback.path
+        manifestPlaceholders["oauthEnabled"] = (xClient.isNotBlank() && xRedirect.isNotBlank()).toString()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    val signingFile = releaseOption("EVASI_RELEASE_KEYSTORE")
+    if (!signingFile.isNullOrBlank()) {
+        val signing = signingConfigs.create("distribution") {
+            storeFile = rootProject.file(signingFile)
+            storePassword = requireNotNull(releaseOption("EVASI_RELEASE_STORE_PASSWORD")) { "Missing EVASI_RELEASE_STORE_PASSWORD" }
+            keyAlias = requireNotNull(releaseOption("EVASI_RELEASE_KEY_ALIAS")) { "Missing EVASI_RELEASE_KEY_ALIAS" }
+            keyPassword = requireNotNull(releaseOption("EVASI_RELEASE_KEY_PASSWORD")) { "Missing EVASI_RELEASE_KEY_PASSWORD" }
+        }
+        buildTypes.getByName("release").signingConfig = signing
     }
 
     // The downloadable GitHub APK updates the original standalone test installation.
@@ -38,6 +74,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -80,6 +117,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    kapt("androidx.room:room-compiler:2.7.2")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     val youtubeDlAndroid = "0.18.1"
     implementation("io.github.junkfood02.youtubedl-android:library:$youtubeDlAndroid")

@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+  <string name="queue_empty">Your queue is empty</string>
+  <string name="queue_intro">Start a download from Home or share a post to the app.</string>
+  <string name="library_action_failed">This action could not be completed. Check that the file is available and try again.</string>
+  <string name="queue_unknown_total">%1$s downloaded · Total size unknown</string>
+  <string name="queue_pause">Pause</string>
+  <string name="queue_resume">Resume</string>
+  <string name="queue_move">Reorder</string>
+  <string name="queue_earlier">Move earlier</string>
+  <string name="queue_later">Move later</string>
+  <string name="library_waiting">Waiting</string>
+  <string name="queue_active">Downloading</string>
+  <string name="queue_paused">Paused</string>
+  <string name="queue_complete">Saved</string>
+  <string name="history_empty">No downloads yet</string>
+  <string name="history_intro">Files saved to your gallery appear here.</string>
+  <string name="history_missing">File removed</string>
+  <string name="history_actions">Actions</string>
+  <string name="history_share">Share</string>
+  <string name="history_again">Download again</string>
+  <string name="history_info">File details</string>
+  <string name="history_delete">Delete</string>
+  <string name="history_requeued">Added to downloads</string>
+  <string name="history_delete_confirm">Delete %1$s from your gallery and history?</string>
+  <string name="history_forget_confirm">Remove %1$s from history?</string>
+</resources>

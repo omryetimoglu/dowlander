@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">eVasi Downloader App</string>
+    <string name="app_name">eVasi Video Downloader</string>
     <string name="settings">Ayarlar</string>
     <string name="language">Dil</string>
     <string name="english">English</string>
@@ -8,8 +8,8 @@
     <string name="back">Geri</string>
     <string name="close">Kapat</string>
     <string name="download_settings">İndirmeler</string>
-    <string name="auto_start">Kopyalanan bağlantıları otomatik başlat</string>
-    <string name="auto_start_hint">İndirme 1,5 saniye sonra başlar. Erişilebilirlik ayarlarındaki daha uzun süre uygulanır.</string>
+    <string name="auto_start">Otomatik indirme</string>
+    <string name="auto_start_hint">Bağlantı hazır olduğunda en yüksek kaliteyle indirmeyi başlat.</string>
     <string name="notification_settings">İndirme bildirimleri</string>
     <string name="notification_settings_hint">İndirme ilerlemesi ve sonuç bildirimlerini yönetin.</string>
     <string name="notification_channel">İndirmeler</string>
@@ -22,7 +22,7 @@
     <string name="paste_link">Bağlantıyı yapıştır</string>
     <string name="paste_missing">Önce bir gönderi bağlantısı kopyalayın.</string>
     <string name="select_quality">Piksel seç</string>
-    <string name="start_download">İndirmeyi başlat</string>
+    <string name="start_download">İşlemi başlat</string>
     <string name="quality_finding">Mevcut çözünürlükler kontrol ediliyor…</string>
     <string name="quality_original">Bu kaynak özgün dosyayı sunuyor.</string>
     <string name="quality_hint">Bu indirme için çözünürlüğü seçin.</string>
@@ -57,4 +57,36 @@
     <string name="error_invalid_link">Metinde geçerli bir gönderi bağlantısı bulunamadı.</string>
     <string name="gallery_unavailable">Dosyayı açabilecek bir galeri uygulaması bulunamadı.</string>
     <string name="error_unknown">İndirme kesildi. Lütfen yeniden deneyin.</string>
+    <string name="tab_home">Ana sayfa</string>
+    <string name="tab_downloads">İndirmeler</string>
+    <string name="tab_history">Geçmiş</string>
+    <string name="new_download">Yeni indirme</string>
+    <string name="media_link">Medya bağlantısı</string>
+    <string name="link_placeholder">Bağlantı yazın veya yapıştırın…</string>
+    <string name="clear_link">Bağlantıyı temizle</string>
+    <string name="preview">Medya önizlemesi</string>
+    <string name="preview_hint">Medyayı ve kalite seçeneklerini görmek için bir gönderi ekleyin.</string>
+    <string name="platform_albums">Herkese açık fotoğraflar, videolar ve albümler</string>
+    <string name="platform_clips_photos">Herkese açık videolar ve fotoğraf gönderileri</string>
+    <string name="platform_mixed">Herkese açık fotoğraflar, videolar ve hareketli medya</string>
+    <string name="platform_video_shorts">Herkese açık videolar ve Shorts</string>
+    <string name="platform_public">Dosyalar gönderiye göre değişir. Gizli, giriş gerektiren veya DRM korumalı içerik indirilemez.</string>
+    <string name="example_link">Bağlantı biçimi</string>
+    <string name="home_queue_waiting">İndirme kuyruğunda</string>
+    <string name="transfer_paused">İndirme duraklatıldı</string>
+    <string name="media_photo">Fotoğraf</string>
+    <string name="media_gif">GIF</string>
+    <string name="media_video">Video</string>
+    <string name="quality_best">Özgün · En yüksek kalite</string>
+    <string name="transfer_amount">%1$s / %2$s</string>
+    <string name="transfer_percent">%%%1$.1f</string>
+    <string name="downloaded_value">%1$s indirildi</string>
+    <string name="transfer_speed">%1$s/sn</string>
+    <string name="transfer_eta">%1$s kaldı</string>
+    <string name="total_unknown">Toplam boyut henüz bilinmiyor</string>
+    <string name="home_deleted">Bu gönderi silinmiş veya bulunamadı.</string>
+    <string name="home_private">Bu medya gizli veya giriş gerektiriyor.</string>
+    <string name="home_timeout">Sunucu zamanında yanıt vermedi. Tekrar deneyin.</string>
+    <string name="home_no_space">Yeterli depolama alanı yok. Yer açıp tekrar deneyin.</string>
+    <string name="home_permission">Bu medyaya erişilemedi. Dosyayı tekrar paylaşın veya izinleri kontrol edin.</string>
 </resources>

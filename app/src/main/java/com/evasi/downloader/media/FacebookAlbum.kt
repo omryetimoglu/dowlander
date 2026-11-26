@@ -27,7 +27,7 @@ internal object FacebookAlbum {
         val photo = photoId(finalPage) ?: canonical?.let(::photoId)
         if (photo != null) {
             val item = viewer(body, photo) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
-            return MediaPost(listOf(item), "Facebook")
+            return MediaPost(listOf(item), "Facebook", previewUrl = item.sources.firstOrNull()?.uri)
         }
         val ids = setOfNotNull(postId(finalPage), canonical?.let(::postId))
         if (ids.isEmpty()) return null
@@ -49,7 +49,8 @@ internal object FacebookAlbum {
                     else -> unavailable()
                 }
             }
-            return MediaPost(items, story.optJSONObject("message")?.optString("text").orEmpty().take(100))
+            return MediaPost(items, "Facebook", description = story.optJSONObject("message").caption("text"),
+                previewUrl = items.firstOrNull()?.takeIf { it.kind == MediaKind.PHOTO }?.sources?.firstOrNull()?.uri)
         }
         return null
     }

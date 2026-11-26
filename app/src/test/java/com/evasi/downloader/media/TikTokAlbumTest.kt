@@ -23,7 +23,8 @@ class TikTokAlbumTest {
             assertEquals(video, url)
             url to page(item)
         })
-        assertEquals("Photo mode", result.title)
+        assertEquals("TikTok", result.title)
+        assertEquals("Photo mode", result.description)
         assertEquals(listOf(MediaKind.PHOTO, MediaKind.PHOTO), result.items.map { it.kind })
         assertEquals(listOf(first, second), result.items.map { it.sources.single().uri })
         assertTrue(result.items.all { it.sources.single().referer == "https://www.tiktok.com/" })
@@ -54,12 +55,14 @@ class TikTokAlbumTest {
     }
 
     @Test fun missingDeniedOrMismatchedPhotoCannotFallThroughToVideo() {
+        assertEquals(FailureReason.PRIVATE, assertThrows(MediaFailure::class.java) {
+            TikTokAlbum.probe(photo) { video to page(item.replace("\"imagePost\":", "\"privateItem\":true,\"imagePost\":")) }
+        }.reason)
         for (response in listOf(
             video to "<html>Sign in</html>",
             video to page("""{"id":"$id","video":{"cover":"https://example.com/poster"}}"""),
             URI("https://www.tiktok.com/login") to "<html>Sign in</html>",
             URI("https://www.tiktok.com/@other/video/99") to page(item),
-            video to page(item.replace("\"imagePost\":", "\"privateItem\":true,\"imagePost\":")),
             video to """<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__">{"__DEFAULT_SCOPE__":
                 {"webapp.video-detail":{"statusCode":10216}}}</script>""",
         )) assertEquals(FailureReason.UNAVAILABLE, assertThrows(MediaFailure::class.java) {

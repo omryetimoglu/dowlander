@@ -1,0 +1,28 @@
+<resources>
+    <string name="share_picker_title">Medyayı paylaş</string>
+    <string name="share_files_unavailable">Dosyaya veya paylaşım uygulamasına erişilemedi.</string>
+    <string name="share_video_caption_title">Video özgün gönderi metniyle paylaşılsın mı?</string>
+    <string name="share_caption_title">Medya özgün gönderi metniyle paylaşılsın mı?</string>
+    <string name="share_video_only">Yalnızca videoyu paylaş</string>
+    <string name="share_original_text">Gönderi metni</string>
+    <string name="share_with_text">Metinle paylaş</string>
+    <string name="share_copied">Metin kopyalandı</string>
+    <string name="share_copy_failed">Metin kopyalanamadı.</string>
+    <string name="share_copy_text">Metni kopyala</string>
+    <string name="share_file_only">Yalnızca dosyaları paylaş</string>
+    <string name="share_media_button">Medyayı paylaş</string>
+    <string name="share_no_caption">Bu gönderinin metnine ulaşılamadı.</string>
+    <string name="share_close">Kapat</string>
+    <string name="x_login">X ile giriş yap</string>
+    <string name="x_login_explanation">Gönderinin özgün metnini düzenlemek, kopyalamak veya dosyalarla birlikte paylaşmak için X ile giriş yap. Nerede paylaşacağını sen seçersin.</string>
+    <string name="x_login_unconfigured">Bu sürümde X ile giriş henüz yapılandırılmadı. Dosyalarını paylaşabilirsin.</string>
+    <string name="x_account">X hesabı</string>
+    <string name="x_logged_as">\@%1$s hesabıyla giriş yapıldı</string>
+    <string name="x_logout">Çıkış yap</string>
+    <string name="x_verifying">Hesap doğrulanıyor…</string>
+    <string name="x_session_expired">X oturumunun süresi doldu. Gönderi metnini kullanmak için tekrar giriş yap.</string>
+    <string name="x_login_denied">X ile giriş isteği reddedildi.</string>
+    <string name="x_login_failed">X hesabı doğrulanamadı. Tekrar giriş yapmayı dene.</string>
+    <string name="x_storage_failed">Güvenli hesap depolama alanına erişilemedi. Tekrar dene.</string>
+    <string name="x_no_browser">X giriş sayfasını açabilecek bir tarayıcı bulunamadı.</string>
+</resources>

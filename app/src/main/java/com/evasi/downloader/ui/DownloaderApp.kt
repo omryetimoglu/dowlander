@@ -1,23 +1,26 @@
 package com.evasi.downloader.ui
 
+import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,189 +28,381 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAccessibilityManager
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.evasi.downloader.R
-import kotlin.math.roundToInt
+import com.evasi.downloader.media.MediaKind
 
-private val palette = lightColorScheme(
-    primary = Accent, onPrimary = Color.White, primaryContainer = Mint, onPrimaryContainer = Ink,
-    surface = Color.White, onSurface = Ink, onSurfaceVariant = Muted, background = Paper,
-    onBackground = Ink, outline = Line, secondaryContainer = Mint,
-)
+private enum class Tab(val label: Int, val icon: Mark) {
+    Home(R.string.tab_home, Mark.Home), Downloads(R.string.tab_downloads, Mark.Download),
+    History(R.string.tab_history, Mark.History), Settings(R.string.settings, Mark.Settings),
+}
 
 @Composable
-fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
-    var settings by rememberSaveable(state.controlsGeneration) { mutableStateOf(false) }
-    var languagePanel by rememberSaveable(state.controlsGeneration) { mutableStateOf(false) }
-    BackHandler(enabled = settings && !languagePanel) { settings = false }
-    MaterialTheme(colorScheme = palette) {
-        Box(Modifier.fillMaxSize().background(Paper).systemBarsPadding(), contentAlignment = Alignment.TopCenter) {
-            Column(Modifier.widthIn(max = 580.dp).fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (settings) {
-                        IconAction(Mark.Back, R.string.back) { settings = false }
-                        Spacer(Modifier.width(6.dp))
-                    } else {
-                        BrandLogo(Modifier.padding(start = 4.dp).size(38.dp))
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Text(
-                        stringResource(if (settings) R.string.settings else R.string.app_name),
-                        Modifier.weight(1f), color = Ink, fontSize = 18.sp, lineHeight = 23.sp,
-                        letterSpacing = (-0.5).sp, fontWeight = FontWeight.Bold,
-                    )
-                    if (!settings) IconAction(Mark.Settings, R.string.settings) { settings = true }
+internal fun DownloaderApp(
+    state: ScreenState,
+    appearance: AppAppearance,
+    downloads: @Composable () -> Unit,
+    history: @Composable () -> Unit,
+    settings: @Composable () -> Unit,
+    postText: @Composable () -> Unit,
+    onEvent: (UiEvent) -> Unit,
+) {
+    var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    var handledShare by rememberSaveable { mutableLongStateOf(state.controlsGeneration) }
+    LaunchedEffect(state.controlsGeneration, state.source) {
+        if (state.source == Source.Share && state.controlsGeneration != handledShare) {
+            handledShare = state.controlsGeneration
+            tab = Tab.Home
+        }
+    }
+    BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
+    EvasiTheme(appearance) {
+        GlassBackdrop {
+            Column(Modifier.align(Alignment.TopCenter).widthIn(max = 720.dp).fillMaxSize()
+                .systemBarsPadding().imePadding()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = if (appearance.compact) 6.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Image(painterResource(R.drawable.brand_logo), null, Modifier.size(39.dp).clip(RoundedCornerShape(24)))
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.app_name), color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = (-.4).sp)
                 }
-                HorizontalDivider(color = Line)
-                if (settings) SettingsContent(state.language, state.autoStart, onEvent) { languagePanel = true }
-                else Home(state, onEvent)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when (tab) {
+                        Tab.Home -> Home(state, postText, { tab = Tab.Downloads }, onEvent)
+                        Tab.Downloads -> downloads()
+                        Tab.History -> history()
+                        Tab.Settings -> settings()
+                    }
+                }
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = if (appearance.glass) .85f else 1f),
+                    windowInsets = WindowInsets(0), tonalElevation = 0.dp) {
+                    Tab.entries.forEach { destination ->
+                        val name = stringResource(destination.label)
+                        NavigationBarItem(
+                            selected = tab == destination, onClick = { tab = destination },
+                            icon = { Glyph(destination.icon,
+                                if (tab == destination) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                Modifier.size(22.dp)) },
+                            label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp) },
+                            modifier = Modifier.semantics { contentDescription = name },
+                            colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer),
+                        )
+                    }
+                }
             }
+            if (state.qualitySheet && tab == Tab.Home) QualityPanel(state, onEvent)
         }
-        if (languagePanel && settings) LanguagePanel(state.language, { languagePanel = false }) {
-            languagePanel = false
-            onEvent(UiEvent.SetLanguage(it))
-        }
-        if (!settings && state.qualitySheet) QualityPanel(state, onEvent)
     }
 }
 
 @Composable
-private fun BrandLogo(modifier: Modifier) {
-    Image(
-        painter = painterResource(R.drawable.brand_logo),
-        contentDescription = null,
-        modifier = modifier.clip(RoundedCornerShape(24)),
+private fun Home(
+    state: ScreenState, completedShare: @Composable () -> Unit, showQueue: () -> Unit, onEvent: (UiEvent) -> Unit,
+) {
+    val compact = LocalAppearance.current.compact
+    var help by rememberSaveable { mutableStateOf<Platform?>(null) }
+    val ready = state.phase == Phase.Ready
+    val preparing = state.phase == Phase.Preparing
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = if (compact) 14.dp else 20.dp, vertical = if (compact) 6.dp else 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 18.dp),
+        ) {
+            if (state.phase == Phase.Saved) {
+                MediaCard(state)
+                completedShare()
+                OutlinedButton(onClick = { onEvent(UiEvent.OpenGallery) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.open_gallery))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(stringResource(R.string.new_download), Modifier.semantics { heading() },
+                    color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold,
+                    fontSize = 29.sp, lineHeight = 34.sp, letterSpacing = (-1).sp)
+                LinkField(state.link, onEvent)
+                Platforms { help = it }
+            }
+            if (state.phase != Phase.Saved) MediaCard(state)
+            when (state.phase) {
+                Phase.Downloading -> OutlinedButton(onClick = { onEvent(UiEvent.Cancel) }) { Text(stringResource(R.string.cancel)) }
+                Phase.Queued, Phase.Paused -> OutlinedButton(onClick = showQueue) { Text(stringResource(R.string.tab_downloads)) }
+                Phase.Failed, Phase.Cancelled -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val canRetry = if (state.phase == Phase.Cancelled) {
+                            state.source != Source.None || state.link.isNotBlank()
+                        } else {
+                            state.error !in setOf(UiError.Unsupported, UiError.InvalidLink, UiError.NoMedia)
+                        }
+                        if (canRetry)
+                            OutlinedButton(onClick = { onEvent(UiEvent.Retry) }) { Text(stringResource(R.string.retry)) }
+                        if (state.savedCount > 0) TextButton(onClick = { onEvent(UiEvent.OpenGallery) }) { Text(stringResource(R.string.open_gallery)) }
+                    }
+                }
+                else -> Unit
+            }
+            Spacer(Modifier.height(1.dp))
+        }
+        if (state.phase == Phase.Idle || preparing || ready) {
+            DownloadActions(state.quality, preparing || ready, ready, onEvent)
+        }
+    }
+    help?.let { PlatformInfo(it) { help = null } }
+}
+
+@Composable
+private fun LinkField(link: String, onEvent: (UiEvent) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val focus = LocalFocusManager.current
+    val paste = stringResource(R.string.paste_link)
+    val clear = stringResource(R.string.clear_link)
+    OutlinedTextField(
+        value = link, onValueChange = { onEvent(UiEvent.EditLink(it)) }, singleLine = true,
+        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(19.dp),
+        label = { Text(stringResource(R.string.media_link)) },
+        placeholder = { Text(stringResource(R.string.link_placeholder), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Glyph(Mark.Link, colors.primary, Modifier.size(22.dp)) },
+        trailingIcon = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (link.isNotEmpty()) IconButton(onClick = { onEvent(UiEvent.EditLink("")) },
+                    modifier = Modifier.semantics { contentDescription = clear }) {
+                    Glyph(Mark.Close, colors.onSurfaceVariant, Modifier.size(17.dp))
+                }
+                IconButton(onClick = { focus.clearFocus(); onEvent(UiEvent.Paste) },
+                    modifier = Modifier.semantics { contentDescription = paste }) {
+                    Glyph(Mark.Clipboard, colors.primary, Modifier.size(20.dp))
+                }
+            }
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = colors.surface.copy(alpha = if (LocalAppearance.current.glass) .82f else 1f),
+            focusedContainerColor = colors.surface, unfocusedBorderColor = colors.outlineVariant,
+        ),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
     )
 }
 
 @Composable
-private fun IconAction(mark: Mark, description: Int, action: () -> Unit) {
-    val label = stringResource(description)
-    IconButton(onClick = action, modifier = Modifier.semantics { contentDescription = label }) {
-        Glyph(mark, Ink, Modifier.size(22.dp))
+private fun Platforms(onSelect: (Platform) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Platform.entries.forEach { platform ->
+            IconButton(onClick = { onSelect(platform) }, modifier = Modifier.size(48.dp)) {
+                PlatformBadge(platform.title, Modifier.size(32.dp))
+            }
+        }
     }
 }
 
 @Composable
-private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
-    val picking = state.source == Source.Clipboard && state.phase in listOf(Phase.Preparing, Phase.Ready)
-    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-        // Keep the main action next to the status. The whole group can scroll on short
-        // screens and with large system fonts.
-        val viewportHeight = maxHeight
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = viewportHeight)
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-        ) {
-            val title = when (state.phase) {
-                Phase.Idle -> R.string.idle_title
-                Phase.Preparing -> R.string.preparing_title
-                Phase.Ready -> R.string.ready_title
-                Phase.Downloading -> if (state.resolving) R.string.preparing_title else R.string.download_title
-                Phase.Saved -> R.string.saved_title
-                Phase.Failed -> R.string.failed_title
-                Phase.Cancelled -> R.string.cancelled_title
+private fun MediaCard(state: ScreenState) {
+    val colors = MaterialTheme.colorScheme
+    val label = when (state.phase) {
+        Phase.Idle -> R.string.preview
+        Phase.Preparing -> R.string.preparing_title
+        Phase.Ready -> R.string.ready_title
+        Phase.Queued -> R.string.home_queue_waiting
+        Phase.Paused -> R.string.transfer_paused
+        Phase.Downloading -> R.string.download_title
+        Phase.Saved -> R.string.saved_title
+        Phase.Cancelled -> R.string.cancelled_title
+        Phase.Failed -> R.string.failed_title
+    }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(if (LocalAppearance.current.compact) 14.dp else 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val success = state.phase == Phase.Saved
+                var showSuccess by remember(state.phase) { mutableStateOf(false) }
+                LaunchedEffect(success) { showSuccess = success }
+                val scale by animateFloatAsState(
+                    if (success && !showSuccess) .88f else 1f,
+                    if (LocalAppearance.current.animations) tween(190) else snap(), label = "completion",
+                )
+                Box(Modifier.size(40.dp).scale(scale).background(colors.primaryContainer, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center) {
+                    Glyph(when (state.phase) {
+                        Phase.Saved -> Mark.Check
+                        Phase.Failed, Phase.Cancelled -> Mark.Repeat
+                        Phase.Paused, Phase.Queued -> Mark.History
+                        Phase.Downloading, Phase.Ready -> Mark.Download
+                        Phase.Idle, Phase.Preparing -> Mark.Gallery
+                    }, colors.primary, Modifier.size(21.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(label), Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+                        color = colors.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    if (state.phase == Phase.Idle) Text(stringResource(R.string.preview_hint), color = colors.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (state.link.isNotEmpty() && state.phase != Phase.Idle)
+                    PlatformBadge(state.link, Modifier.size(30.dp))
             }
-            val mark = when (state.phase) {
-                Phase.Idle -> null
-                Phase.Downloading -> Mark.Download
-                Phase.Preparing, Phase.Ready -> Mark.Link
-                Phase.Saved -> Mark.Check
-                Phase.Failed -> Mark.Repeat
-                Phase.Cancelled -> Mark.Close
-            }
-            val hint = when (state.phase) {
-                Phase.Idle -> stringResource(R.string.idle_intro)
-                Phase.Failed -> stringResource(errorMessage(state.error))
-                Phase.Saved -> savedText(state.savedCount)
-                else -> ""
-            }
-            if (mark == null) {
-                BrandLogo(Modifier.size(96.dp))
-            } else {
-                Box(Modifier.size(64.dp).background(Mint, RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
-                    Glyph(mark, Accent, Modifier.size(31.dp))
+            if (state.previewUri != null) {
+                MediaThumbnail(state.previewUri, Modifier.fillMaxWidth().heightIn(max = 220.dp).aspectRatio(16f / 9)
+                    .clip(RoundedCornerShape(15.dp)).background(colors.surfaceVariant)) {
+                    Glyph(Mark.Gallery, colors.onSurfaceVariant, Modifier.size(32.dp))
                 }
             }
-            Spacer(Modifier.height(18.dp))
-            Text(stringResource(title), Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-                color = Ink, fontSize = 30.sp, lineHeight = 36.sp, textAlign = TextAlign.Center,
-                letterSpacing = (-1).sp, fontWeight = FontWeight.SemiBold)
-            if (hint.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(hint, Modifier.widthIn(max = 340.dp), color = Muted, textAlign = TextAlign.Center,
-                    fontSize = 16.sp, lineHeight = 23.sp)
+            val name = state.fileName.ifBlank { state.title }
+            if (name.isNotBlank() && state.phase != Phase.Idle) {
+                Text(name, color = colors.onSurface, style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            if (state.source != Source.None && state.phase !in listOf(Phase.Idle, Phase.Saved)) {
-                Spacer(Modifier.height(18.dp))
-                val albumCount = if (state.phase == Phase.Ready) state.total else 0
-                SourceCard(state.source, state.title, state.link, albumCount)
+            val details = listOfNotNull(
+                state.mediaKind?.let { stringResource(when (it) {
+                    MediaKind.PHOTO -> R.string.media_photo
+                    MediaKind.GIF -> R.string.media_gif
+                    MediaKind.VIDEO -> R.string.media_video
+                }) },
+                state.resolution,
+                if (state.total > 1) pluralStringResource(R.plurals.album_count, state.total, state.total) else null,
+            )
+            if (details.isNotEmpty()) Text(details.joinToString("  ·  "), color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall)
+            when (state.phase) {
+                Phase.Preparing -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Phase.Downloading, Phase.Saved -> TransferDetails(state)
+                Phase.Failed -> Text(stringResource(errorMessage(state.error)), color = colors.error)
+                else -> Unit
             }
-            if (state.phase == Phase.Downloading) {
-                Spacer(Modifier.height(12.dp))
-                TransferProgress(state.item, state.total, state.progress)
+            if (state.savedCount > 0) Text(pluralStringResource(R.plurals.saved_items, state.savedCount, state.savedCount),
+                color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun TransferDetails(state: ScreenState) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val fraction = state.progress?.coerceIn(0f, 1f)
+    val done = state.phase == Phase.Saved
+    if (!done) {
+        if (state.total > 1 && state.item > 0) Text(stringResource(R.string.item_progress, state.item, state.total), color = colors.onSurfaceVariant)
+        if (fraction == null) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        else {
+            val progress by animateFloatAsState(fraction, if (LocalAppearance.current.animations) tween(140) else snap(), label = "transfer")
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    val downloaded = Formatter.formatShortFileSize(context, state.downloadedBytes)
+    val size = state.totalBytes?.let { Formatter.formatShortFileSize(context, it) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(if (done) size ?: downloaded else if (size == null) stringResource(R.string.downloaded_value, downloaded)
+            else stringResource(R.string.transfer_amount, downloaded, size),
+            color = colors.onSurface, fontWeight = FontWeight.SemiBold)
+        if (fraction != null && !done) Text(stringResource(R.string.transfer_percent, fraction * 100), color = colors.primary)
+    }
+    if (!done) {
+        val info = listOfNotNull(
+            if (size == null) stringResource(R.string.total_unknown) else null,
+            state.bytesPerSecond?.takeIf { it > 0 }?.let { stringResource(R.string.transfer_speed, Formatter.formatShortFileSize(context, it)) },
+            state.remainingSeconds?.let { stringResource(R.string.transfer_eta, android.text.format.DateUtils.formatElapsedTime(it)) },
+        )
+        if (info.isNotEmpty()) Text(info.joinToString("  ·  "), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun DownloadActions(quality: String?, canSelect: Boolean, canStart: Boolean, onEvent: (UiEvent) -> Unit) {
+    val focus = LocalFocusManager.current
+    val event by rememberUpdatedState(onEvent)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (LocalAppearance.current.compact) 5.dp else 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        val select = stringResource(R.string.select_quality)
+        val qualityTouch = if (canSelect) Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                event(UiEvent.QualityTouched)
             }
-            if (state.savedCount > 0 && state.phase in listOf(Phase.Cancelled, Phase.Failed)) {
-                Spacer(Modifier.height(8.dp))
-                Text(savedText(state.savedCount), color = Muted)
+        } else Modifier
+        OutlinedButton(
+            onClick = { focus.clearFocus(); onEvent(UiEvent.OpenQuality) }, enabled = canSelect,
+            modifier = Modifier.weight(1f).heightIn(min = 50.dp).then(qualityTouch)
+                .semantics { if (quality != null) contentDescription = select },
+            contentPadding = PaddingValues(horizontal = 8.dp), shape = RoundedCornerShape(16.dp),
+        ) { Text(quality ?: select) }
+        Button(onClick = { focus.clearFocus(); onEvent(UiEvent.Start) }, enabled = canStart,
+            modifier = Modifier.weight(1.12f).heightIn(min = 50.dp), shape = RoundedCornerShape(16.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Glyph(Mark.Download, LocalContentColor.current, Modifier.size(16.dp))
+            Spacer(Modifier.width(5.dp))
+            Text(stringResource(R.string.start_download))
+        }
+    }
+}
+
+@Composable
+private fun QualityPanel(state: ScreenState, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
+    InfoPanel(stringResource(R.string.select_quality), { onEvent(UiEvent.CloseQuality) }) {
+        if (state.resolving) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.quality_finding))
+        } else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp).selectableGroup()) {
+            item(key = "original") {
+                QualityRow(stringResource(R.string.quality_best), state.quality == null, null) { onEvent(UiEvent.SelectOriginal) }
             }
-            if (!picking) Column(Modifier.padding(top = 24.dp).widthIn(max = 440.dp).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                when (state.phase) {
-                    Phase.Idle -> Action(R.string.paste_link, Mark.Clipboard) { onEvent(UiEvent.Paste) }
-                    Phase.Preparing, Phase.Ready, Phase.Downloading ->
-                        Action(R.string.cancel, Mark.Close, primary = false) { onEvent(UiEvent.Cancel) }
-                    Phase.Saved -> {
-                        Action(R.string.open_gallery, Mark.Gallery) { onEvent(UiEvent.OpenGallery) }
-                        Action(R.string.paste_link, Mark.Clipboard, primary = false) { onEvent(UiEvent.Paste) }
-                    }
-                    Phase.Failed, Phase.Cancelled -> {
-                        val canRetry = state.phase == Phase.Cancelled ||
-                            state.error !in listOf(UiError.InvalidLink, UiError.Unsupported, UiError.NoMedia)
-                        if (canRetry) Action(R.string.retry, Mark.Repeat) { onEvent(UiEvent.Retry) }
-                        if (state.savedCount > 0)
-                            Action(R.string.open_gallery, Mark.Gallery, primary = false) { onEvent(UiEvent.OpenGallery) }
-                        Action(R.string.paste_link, Mark.Clipboard, primary = !canRetry) { onEvent(UiEvent.Paste) }
-                    }
+            items(state.qualityOptions, key = { it }) { option ->
+                QualityRow(option, state.quality == option,
+                    state.qualitySizes[option]?.let { Formatter.formatShortFileSize(context, it) }) {
+                    onEvent(UiEvent.SelectQuality(option))
                 }
             }
         }
     }
-    if (picking) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+}
+
+@Composable
+private fun QualityRow(label: String, selected: Boolean, size: String?, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton, onClick = onClick)
+        .padding(vertical = 11.dp, horizontal = 4.dp).heightIn(min = 32.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        RadioButton(selected, onClick = null)
+        Text(label, Modifier.weight(1f))
+        if (size != null) Text(size, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun InfoPanel(title: String, close: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val panel = @Composable {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            state.countdown?.let {
-                Text(stringResource(R.string.countdown_hint), color = Muted, fontSize = 13.sp)
-                Rail(it)
-            }
-            ClipboardActions(state.controlsGeneration, state.quality, state.qualitySheet, onEvent)
+            Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold)
+            content()
+            TextButton(onClick = close, modifier = Modifier.align(Alignment.End)) { Text(stringResource(R.string.close)) }
         }
     }
+    if (LocalAppearance.current.animations) ModalBottomSheet(
+        onDismissRequest = close, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { panel() } else Dialog(onDismissRequest = close) {
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) { panel() }
+    }
 }
-
-@Composable
-private fun savedText(count: Int): String =
-    if (count == 0) "" else pluralStringResource(R.plurals.saved_items, count, count)
 
 private fun errorMessage(error: UiError?): Int = when (error) {
     UiError.Network -> R.string.error_network
@@ -218,249 +413,10 @@ private fun errorMessage(error: UiError?): Int = when (error) {
     UiError.Write -> R.string.error_write
     UiError.InvalidLink -> R.string.error_invalid_link
     UiError.Gallery -> R.string.gallery_unavailable
+    UiError.Deleted -> R.string.home_deleted
+    UiError.Private -> R.string.home_private
+    UiError.Timeout -> R.string.home_timeout
+    UiError.NoSpace -> R.string.home_no_space
+    UiError.Permission -> R.string.home_permission
     UiError.Unknown, null -> R.string.error_unknown
-}
-
-@Composable
-private fun SourceCard(source: Source, title: String, link: String, albumCount: Int) {
-    val fromShare = source == Source.Share
-    val url = link.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
-    Surface(modifier = Modifier.widthIn(max = 440.dp), color = Color.White,
-        border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(14.dp)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-            Glyph(if (fromShare) Mark.Share else Mark.Link, Accent, Modifier.size(20.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(stringResource(if (fromShare) R.string.share_label else R.string.clipboard_label),
-                    color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                if (title.isNotBlank() && title != url) Text(title, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (albumCount > 1)
-                    Text(pluralStringResource(R.plurals.album_count, albumCount, albumCount), color = Ink, fontSize = 14.sp)
-                if (url != null) Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Muted,
-                    fontSize = 14.sp, lineHeight = 19.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun TransferProgress(item: Int, total: Int, progress: Float?) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (item > 0 && total > 0) Text(
-                stringResource(R.string.item_progress, item, total),
-                color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.weight(1f))
-            progress?.let {
-                Text(stringResource(R.string.percentage, (it.coerceIn(0f, 1f) * 100).roundToInt()),
-                    color = Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
-        }
-        Rail(progress)
-    }
-}
-
-@Composable
-private fun Rail(progress: Float?) {
-    if (progress == null) {
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Mint)
-    } else {
-        val fraction = progress.coerceIn(0f, 1f)
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Mint).progressSemantics(fraction)) {
-            Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Accent, CircleShape))
-        }
-    }
-}
-
-@Composable
-private fun ClipboardActions(
-    generation: Long,
-    quality: String?,
-    sheetOpen: Boolean,
-    onEvent: (UiEvent) -> Unit,
-) {
-    var leftPlaced by remember(generation) { mutableStateOf(false) }
-    var rightPlaced by remember(generation) { mutableStateOf(false) }
-    val focused = LocalWindowInfo.current.isWindowFocused
-    val accessibility = LocalAccessibilityManager.current
-    val event by rememberUpdatedState(onEvent)
-    val active = leftPlaced && rightPlaced && focused && !sheetOpen
-    DisposableEffect(generation, active, accessibility) {
-        if (active) {
-            val timeout = accessibility?.calculateRecommendedTimeoutMillis(
-                originalTimeoutMillis = DEFAULT_AUTO_START_MS,
-                containsIcons = true, containsText = true, containsControls = true,
-            ) ?: DEFAULT_AUTO_START_MS
-            event(UiEvent.ControlsReady(generation, timeout.coerceAtLeast(DEFAULT_AUTO_START_MS)))
-        }
-        onDispose { if (active) event(UiEvent.ControlsHidden(generation)) }
-    }
-    BoxWithConstraints {
-        val showIcons = maxWidth >= 355.dp && LocalDensity.current.fontScale <= 1.15f
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Bottom) {
-            val qualityModifier = Modifier.weight(1f).onGloballyPositioned {
-                leftPlaced = !it.boundsInWindow().isEmpty
-            }.pointerInput(generation) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    event(UiEvent.QualityTouched)
-                }
-            }
-            Action(R.string.select_quality, if (showIcons) Mark.Sliders else null, qualityModifier,
-                primary = false, label = quality) { onEvent(UiEvent.OpenQuality) }
-            Action(R.string.start_download, if (showIcons) Mark.Download else null,
-                Modifier.weight(1f).onGloballyPositioned {
-                    rightPlaced = !it.boundsInWindow().isEmpty
-                }) { onEvent(UiEvent.Start) }
-        }
-    }
-}
-
-@Composable
-private fun Action(
-    resource: Int, icon: Mark?, modifier: Modifier = Modifier,
-    primary: Boolean = true, label: String? = null, onClick: () -> Unit,
-) {
-    val actionName = stringResource(resource)
-    val shape = RoundedCornerShape(14.dp)
-    val foreground = if (primary) Color.White else Ink
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 56.dp).clip(shape)
-            .background(if (primary) Accent else Color.White)
-            .then(if (primary) Modifier else Modifier.border(1.dp, Line, shape))
-            .clickable(role = Role.Button, onClickLabel = if (label != null) actionName else null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 11.dp),
-        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Glyph(icon, foreground, Modifier.size(19.dp))
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(label ?: actionName, color = foreground, fontSize = 15.sp, lineHeight = 20.sp,
-            fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun Panel(title: Int, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Paper, contentColor = Ink,
-        dragHandle = { Box(Modifier.padding(top = 12.dp, bottom = 4.dp).size(38.dp, 4.dp).background(Line, CircleShape)) },
-    ) {
-        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 24.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(title), Modifier.weight(1f).semantics { heading() }, color = Ink,
-                    fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 28.sp)
-                IconAction(Mark.Close, R.string.close, dismiss)
-            }
-            Spacer(Modifier.height(8.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun QualityPanel(state: ScreenState, onEvent: (UiEvent) -> Unit) {
-    Panel(R.string.select_quality, { onEvent(UiEvent.CloseQuality) }) {
-        when {
-            state.resolving -> {
-                Row(Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Accent)
-                    Text(stringResource(R.string.quality_finding), color = Muted)
-                }
-            }
-            state.error != null -> Text(stringResource(errorMessage(state.error)), color = Muted)
-            state.qualityOptions.isEmpty() -> Text(stringResource(R.string.quality_original), color = Muted)
-            else -> {
-                Text(stringResource(R.string.quality_hint), color = Muted, fontSize = 15.sp)
-                Spacer(Modifier.height(10.dp))
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp).selectableGroup()) {
-                    items(state.qualityOptions) { option ->
-                        ChoiceRow(option, option == state.quality) { onEvent(UiEvent.SelectQuality(option)) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsContent(language: String, autoStart: Boolean, onEvent: (UiEvent) -> Unit, openLanguage: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Surface(color = Color.White, border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(18.dp)) {
-            SettingRow(Mark.Globe, stringResource(R.string.language),
-                stringResource(if (language == "tr") R.string.turkish else R.string.english),
-                Modifier.clickable(role = Role.Button, onClick = openLanguage)) {
-                Glyph(Mark.Chevron, Muted, Modifier.size(18.dp))
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        SectionTitle(R.string.download_settings)
-        Surface(color = Color.White, border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(18.dp)) {
-            Column {
-                SettingRow(Mark.Download, stringResource(R.string.auto_start), stringResource(R.string.auto_start_hint),
-                    Modifier.toggleable(value = autoStart, role = Role.Switch,
-                        onValueChange = { onEvent(UiEvent.SetAutoStart(it)) })) {
-                    Switch(checked = autoStart, onCheckedChange = null)
-                }
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Line)
-                SettingRow(Mark.Bell, stringResource(R.string.notification_settings),
-                    stringResource(R.string.notification_settings_hint),
-                    Modifier.clickable(role = Role.Button) { onEvent(UiEvent.NotificationSettings) }) {
-                    Glyph(Mark.Chevron, Muted, Modifier.size(18.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionTitle(id: Int) {
-    Text(stringResource(id), Modifier.semantics { heading() }, color = Muted,
-        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-}
-
-@Composable
-private fun SettingRow(mark: Mark, title: String, subtitle: String, modifier: Modifier, trailing: @Composable () -> Unit) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Glyph(mark, Accent, Modifier.size(21.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = Ink, fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, color = Muted, fontSize = 14.sp, lineHeight = 19.sp)
-        }
-        trailing()
-    }
-}
-
-@Composable
-private fun LanguagePanel(current: String, dismiss: () -> Unit, select: (String) -> Unit) {
-    Panel(R.string.language, dismiss) {
-        Column(Modifier.selectableGroup()) {
-            ChoiceRow(stringResource(R.string.english), current == "en") { select("en") }
-            ChoiceRow(stringResource(R.string.turkish), current == "tr") { select("tr") }
-        }
-    }
-}
-
-@Composable
-private fun ChoiceRow(title: String, selected: Boolean, choose: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Mint else Color.Transparent)
-            .selectable(selected = selected, onClick = choose, role = Role.RadioButton)
-            .padding(horizontal = 14.dp, vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, Modifier.weight(1f), color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        RadioButton(selected = selected, onClick = null, modifier = Modifier.size(22.dp))
-    }
 }

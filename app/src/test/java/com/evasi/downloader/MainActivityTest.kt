@@ -145,15 +145,14 @@ class MainActivityTest {
             val first = session.state.value
             assertEquals(firstShare, first.link)
             assertEquals(Source.Share, first.source)
-            assertEquals(Phase.Downloading, first.phase)
-            assertNull(first.countdown)
+            assertEquals(Phase.Queued, first.phase)
 
             controller.newIntent(share(nextShare))
             activity.onWindowFocusChanged(true)
             val next = session.state.value
             assertEquals(nextShare, next.link)
             assertEquals(Source.Share, next.source)
-            assertEquals(Phase.Downloading, next.phase)
+            assertEquals(Phase.Queued, next.phase)
             assertEquals(first.controlsGeneration + 1, next.controlsGeneration)
             controller.newIntent(share(nextShare))
             assertEquals(next.controlsGeneration, session.state.value.controlsGeneration)

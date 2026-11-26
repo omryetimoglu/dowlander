@@ -52,7 +52,11 @@ internal object Mastodon {
         }
         val account = status.optJSONObject("account")
         val displayName = account?.optString("display_name").orEmpty().ifBlank { account?.optString("acct").orEmpty() }
-        return MediaPost(items, displayName.take(100))
+        val content = status.caption("content")?.replace(Regex("<[^>]+>"), " ")
+            ?.replace("&amp;", "&")?.replace("&lt;", "<")?.replace("&gt;", ">")?.replace("&quot;", "\"")
+            ?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
+        val poster = attachments.optJSONObject(0)?.httpsUrl("preview_url")
+        return MediaPost(items, displayName.take(100), content, poster)
     }
 
     private fun JSONObject.httpsUrl(key: String): String? {

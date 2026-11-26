@@ -1,0 +1,28 @@
+<resources>
+    <string name="share_picker_title">Share media</string>
+    <string name="share_files_unavailable">The file or sharing app is unavailable.</string>
+    <string name="share_video_caption_title">Share video with original post text?</string>
+    <string name="share_caption_title">Share media with original post text?</string>
+    <string name="share_video_only">Share video only</string>
+    <string name="share_original_text">Post text</string>
+    <string name="share_with_text">Share with text</string>
+    <string name="share_copied">Text copied</string>
+    <string name="share_copy_failed">Could not copy the text.</string>
+    <string name="share_copy_text">Copy text</string>
+    <string name="share_file_only">Share files only</string>
+    <string name="share_media_button">Share media</string>
+    <string name="share_no_caption">This post has no available text.</string>
+    <string name="share_close">Close</string>
+    <string name="x_login">Sign in with X</string>
+    <string name="x_login_explanation">Sign in with X to edit, copy or share the original post text alongside your files. You choose where to share.</string>
+    <string name="x_login_unconfigured">X sign-in has not been configured for this version. You can still share your files.</string>
+    <string name="x_account">X account</string>
+    <string name="x_logged_as">Signed in as @%1$s</string>
+    <string name="x_logout">Sign out</string>
+    <string name="x_verifying">Verifying account…</string>
+    <string name="x_session_expired">Your X session has expired. Sign in again to use the post text.</string>
+    <string name="x_login_denied">X sign-in was declined.</string>
+    <string name="x_login_failed">Could not verify your X account. Try signing in again.</string>
+    <string name="x_storage_failed">Could not access secure account storage. Try again.</string>
+    <string name="x_no_browser">No browser could open the X sign-in page.</string>
+</resources>

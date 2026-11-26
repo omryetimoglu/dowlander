@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+  <string name="queue_empty">Kuyruğunuz boş</string>
+  <string name="queue_intro">Ana ekranda bir indirme başlatın veya uygulamaya bir gönderi paylaşın.</string>
+  <string name="library_action_failed">İşlem tamamlanamadı. Dosyanın erişilebilir olduğunu kontrol edip tekrar deneyin.</string>
+  <string name="queue_unknown_total">%1$s indirildi · Toplam boyut bilinmiyor</string>
+  <string name="queue_pause">Duraklat</string>
+  <string name="queue_resume">Sürdür</string>
+  <string name="queue_move">Sırala</string>
+  <string name="queue_earlier">Öne al</string>
+  <string name="queue_later">Geri al</string>
+  <string name="library_waiting">Bekliyor</string>
+  <string name="queue_active">İndiriliyor</string>
+  <string name="queue_paused">Duraklatıldı</string>
+  <string name="queue_complete">Kaydedildi</string>
+  <string name="history_empty">Henüz indirme yok</string>
+  <string name="history_intro">Galeriye kaydedilen dosyalar burada görünür.</string>
+  <string name="history_missing">Dosya kaldırıldı</string>
+  <string name="history_actions">İşlemler</string>
+  <string name="history_share">Paylaş</string>
+  <string name="history_again">Tekrar indir</string>
+  <string name="history_info">Dosya bilgileri</string>
+  <string name="history_delete">Sil</string>
+  <string name="history_requeued">İndirme kuyruğuna eklendi</string>
+  <string name="history_delete_confirm">%1$s galeriden ve geçmişten silinsin mi?</string>
+  <string name="history_forget_confirm">%1$s geçmişten kaldırılsın mı?</string>
+</resources>

@@ -14,14 +14,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 
-internal val Ink = Color(0xFF152D29)
-internal val Muted = Color(0xFF53655F)
-internal val Accent = Color(0xFF176752)
-internal val Paper = Color(0xFFF8F9F5)
-internal val Line = Color(0xFFD4DFD7)
-internal val Mint = Color(0xFFE2F2E8)
-
-internal enum class Mark { Check, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
+internal enum class Mark { Home, History, Check, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
 
 private fun line(vararg coordinates: Float): Path = Path().apply {
     moveTo(coordinates[0], coordinates[1])
@@ -38,6 +31,8 @@ internal fun Glyph(mark: Mark, color: Color, modifier: Modifier) {
         )
         scale(size.width / 24f, size.height / 24f, Offset.Zero) {
             when (mark) {
+                Mark.Home -> { path(3f, 10f, 12f, 3f, 21f, 10f); path(5f, 10f, 5f, 21f, 10f, 21f, 10f, 15f, 14f, 15f, 14f, 21f, 19f, 21f, 19f, 10f) }
+                Mark.History -> { drawCircle(color, 8.5f, Offset(12f, 12f), style = pen); path(12f, 6f, 12f, 12f, 16f, 14f) }
                 Mark.Check -> path(4.5f, 12f, 10f, 17.5f, 20f, 7f)
                 Mark.Download -> {
                     path(12f, 3f, 12f, 14f)

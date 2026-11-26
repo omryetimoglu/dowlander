@@ -16,6 +16,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.SocketTimeoutException
 
 class MediaRepository internal constructor(
     context: Context,
@@ -108,7 +109,7 @@ class MediaRepository internal constructor(
 
     suspend fun resolveShared(uri: Uri, mimeType: String?): MediaPost = withContext(Dispatchers.IO) {
         if (uri.scheme != "content") throw MediaFailure(FailureReason.INVALID)
-        val name = sharedInfo(uri).first
+        val (name, size) = sharedInfo(uri)
         val hint = listOfNotNull(runCatching { resolver.getType(uri) }.getOrNull(), mimeType,
             MimeTypeMap.getSingleton().getMimeTypeFromExtension(name?.substringAfterLast('.', "")?.lowercase()))
             .firstOrNull { it.startsWith("image/") || it.startsWith("video/") }
@@ -127,10 +128,26 @@ class MediaRepository internal constructor(
                 }
             }
         }
-        MediaPost(listOf(MediaItem(kind, listOf(MediaSource(uri.toString(), hint, name = name)))), name.orEmpty())
+        MediaPost(listOf(MediaItem(kind, listOf(MediaSource(uri.toString(), hint, name = name, estimatedBytes = size)))),
+            name.orEmpty(), previewUrl = uri.toString())
     }
 
-    suspend fun save(item: MediaItem, quality: Quality?, onProgress: (bytes: Long, total: Long?) -> Unit): Uri {
+    suspend fun save(item: MediaItem, quality: Quality?, onProgress: (Long, Long?) -> Unit): Uri =
+        save(item, quality, DEFAULT_ALBUM, null, onProgress)
+
+    suspend fun save(item: MediaItem, quality: Quality?, album: String, onProgress: (Long, Long?) -> Unit): Uri =
+        save(item, quality, album, null, onProgress)
+
+    suspend fun publishedOutput(outputKey: String): Uri? = withContext(Dispatchers.IO) {
+        gallery.recover()
+        gallery.publishedOutput(outputKey)
+    }
+
+    suspend fun forgetOutput(outputKey: String) = withContext(Dispatchers.IO) { gallery.forgetOutput(outputKey) }
+
+    suspend fun save(
+        item: MediaItem, quality: Quality?, album: String, outputKey: String?, onProgress: (Long, Long?) -> Unit,
+    ): Uri {
         val source = if (quality == null) item.sources.firstOrNull() else item.sources.find { it.quality == quality }
         if (source == null) throw MediaFailure(FailureReason.UNSUPPORTED)
         var inserted: Uri? = null
@@ -140,27 +157,30 @@ class MediaRepository internal constructor(
             return withContext(Dispatchers.IO) {
                 val job = coroutineContext.job
                 gallery.recover()
+                if (outputKey != null) gallery.publishedOutput(outputKey)?.let { return@withContext it }
                 val uri = Uri.parse(source.uri)
                 val onInsert: (Uri) -> Unit = { inserted = it }
                 if (source.platformVideo) {
                     return@withContext platformVideo.download(source, onProgress) { file ->
                         file.inputStream().use { input ->
                             gallery.write(input, source.mime, source.name, file.length(), FailureReason.STORAGE,
-                                item.kind, job, onInsert, onProgress)
+                                item.kind, job, onInsert, { _, _ -> }, album, outputKey)
                         }
                     }
                 }
                 when (uri.scheme?.lowercase()) {
                     "content" -> withSharedInput(uri) { stream ->
                         gallery.write(stream, source.mime, source.name, sharedInfo(uri).second,
-                            FailureReason.INVALID, null, job, onInsert, onProgress)
+                            FailureReason.INVALID, null, job, onInsert, onProgress, album, outputKey)
                     }
                     "https" -> http(URI(source.uri), "image/*, video/*, application/octet-stream", job,
                         referer = source.referer, deliveryCdn = source.deliveryCdn) { response ->
                         response.inputStream.use { stream ->
                             val total = response.contentLengthLong.takeIf { it >= 0 }
                             gallery.write(stream, response.contentType?.substringBefore(';'), source.name,
-                                total, FailureReason.NETWORK, item.kind, job, onInsert, onProgress)
+                                total, FailureReason.NETWORK, item.kind, job, onInsert, { bytes, length ->
+                                    onProgress(bytes, length ?: source.estimatedBytes?.takeIf { it >= bytes })
+                                }, album, outputKey)
                         }
                     }
                     else -> throw MediaFailure(FailureReason.UNSUPPORTED)
@@ -191,7 +211,7 @@ class MediaRepository internal constructor(
         } catch (e: IOException) {
             throw MediaFailure(FailureReason.INVALID, e)
         } catch (e: SecurityException) {
-            throw MediaFailure(FailureReason.UNAVAILABLE, e)
+            throw MediaFailure(FailureReason.PERMISSION, e)
         }
     }
 
@@ -227,8 +247,11 @@ class MediaRepository internal constructor(
                             val next = connection.getHeaderField("Location") ?: throw MediaFailure(FailureReason.UNAVAILABLE)
                             target = runCatching { target.resolve(next) }.getOrElse { throw MediaFailure(FailureReason.UNAVAILABLE, it) }
                         }
-                        401, 403, 404, 410, 451 -> throw MediaFailure(FailureReason.UNAVAILABLE)
-                        408, 429, in 500..599 -> throw MediaFailure(FailureReason.NETWORK)
+                        401 -> throw MediaFailure(FailureReason.PRIVATE)
+                        404, 410 -> throw MediaFailure(FailureReason.DELETED)
+                        403, 451 -> throw MediaFailure(FailureReason.UNAVAILABLE)
+                        408, 504 -> throw MediaFailure(FailureReason.TIMEOUT)
+                        429, in 500..599 -> throw MediaFailure(FailureReason.NETWORK)
                         else -> throw MediaFailure(if (status in 400..499) FailureReason.UNSUPPORTED else FailureReason.UNAVAILABLE)
                     }
                 } finally {
@@ -238,7 +261,7 @@ class MediaRepository internal constructor(
             throw MediaFailure(FailureReason.UNAVAILABLE)
         } catch (e: IOException) {
             job.ensureActive()
-            throw MediaFailure(FailureReason.NETWORK, e)
+            throw MediaFailure(if (e is SocketTimeoutException) FailureReason.TIMEOUT else FailureReason.NETWORK, e)
         }
     }
 }

@@ -22,7 +22,7 @@ class PlatformVideoTest {
     @Test fun explicitQualityConstrainsVisualTracksButCanMergeAudio() {
         val request = PlatformVideoRequest.download(MediaSource(link, quality = Quality(640, 360)))
         val filter = "[width=640][height=360]"
-        assertEquals("bv*$filter[ext=mp4]+ba[ext=m4a]/b$filter[ext=mp4]/bv*$filter+ba/b$filter/bv$filter", request.getOption("-f"))
+        assertEquals("bv*$filter+ba/b$filter/bv$filter", request.getOption("-f"))
         assertEquals("1", request.getOption("--playlist-items"))
         assertTrue(request.hasOption("--no-playlist"))
     }

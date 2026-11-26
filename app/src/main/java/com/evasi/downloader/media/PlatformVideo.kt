@@ -44,20 +44,15 @@ internal class PlatformVideo(private val app: Context) {
             val request = PlatformVideoRequest.download(source)
                 .addOption("-o", File(temp, "video.%(ext)s").absolutePath)
                 .addOption("--newline")
-                .addOption("--progress-template", "download:bytes %(progress.downloaded_bytes)s %(progress.total_bytes,progress.total_bytes_estimate)s")
+                .addOption("--progress-template", "download:bytes %(info.format_id)s %(progress.downloaded_bytes)s %(progress.total_bytes,progress.total_bytes_estimate)s")
                 .addOption("--progress-delta", "0.4")
                 .addOption("--merge-output-format", "mp4/mkv")
                 .addOption("--abort-on-unavailable-fragments")
-            execute(request) { line ->
-                if (line.startsWith("bytes ")) {
-                    val fields = line.split(' ')
-                    fields.getOrNull(1)?.toLongOrNull()?.let { bytes ->
-                        onProgress(bytes, fields.getOrNull(2)?.toLongOrNull())
-                    }
-                }
-            }
+            val progress = NativeTransferProgress(source.estimatedBytes, source.nativeStreamCount, onProgress)
+            execute(request, progress::update)
             val file = temp.listFiles()?.singleOrNull { it.isFile && it.nameWithoutExtension == "video" && it.length() > 0L }
                 ?: throw MediaFailure(FailureReason.UNAVAILABLE)
+            progress.complete(file.length())
             consume(file)
         } finally {
             temp.deleteRecursively()
@@ -130,6 +125,7 @@ internal object PlatformVideoRequest {
         .addOption("--ignore-config")
         .addOption("--match-filters", "!is_live")
         .addOption("--socket-timeout", "20")
+        .addOption("-S", "res,fps,codec:h264:aac")
 
     fun metadata(link: String): YoutubeDLRequest {
         val request = request(link).addOption("--dump-single-json").addOption("--ignore-no-formats-error")
@@ -145,7 +141,7 @@ internal object PlatformVideoRequest {
         val format = source.platformImageFormat?.let { id ->
             require(formatId.matches(id))
             id
-        } ?: "bv*$size[ext=mp4]+ba[ext=m4a]/b$size[ext=mp4]/bv*$size+ba/b$size/bv$size"
+        } ?: "bv*$size+ba/b$size/bv$size"
         val result = request(source.uri)
             .addOption("--playlist-items", source.playlistIndex ?: 1)
             .addOption("-f", format)
@@ -157,19 +153,31 @@ internal object PlatformVideoRequest {
         if (output.isBlank()) throw MediaFailure(FailureReason.UNAVAILABLE)
         val post = JSONObject(output)
         val entries = post.optJSONArray("entries")
-        val items = if (entries == null) listOfNotNull(parseItem(post, link, null)) else {
+        val provider = SocialVideoLinks.match(URI(link))?.host
+        val items = if (entries == null) listOfNotNull(parseItem(post, link, provider, null)) else {
             // An album with a missing attachment must not be reported as fully saved.
             (0 until entries.length()).map { position ->
                 val entry = entries.optJSONObject(position) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
                 val index = entry.optInt("playlist_index").takeIf { it > 0 } ?: (position + 1)
-                parseItem(entry, link, index) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
+                parseItem(entry, link, provider, index) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
             }
         }
         if (items.isEmpty()) throw MediaFailure(FailureReason.UNSUPPORTED)
-        return MediaPost(items, post.optString("title").take(120))
+        val first = entries?.optJSONObject(0) ?: post
+        val caption = post.caption("description") ?: first.caption("description")
+        return MediaPost(items, publicTitle(post, provider), caption, preview(post.caption("thumbnail") ?: first.caption("thumbnail")))
     }
 
-    private fun parseItem(entry: JSONObject, link: String, index: Int?): MediaItem? {
+    private fun publicTitle(node: JSONObject, provider: String?): String {
+        // Social extractors frequently build "title" from a truncated caption. It must not
+        // appear in a guest's filename, queue, or history outside the signed-in text action.
+        val title = if (provider == "www.youtube.com" || provider == null)
+            node.caption("title")?.takeUnless { it == node.caption("description") } else null
+        return (title ?: node.caption("uploader") ?: node.caption("channel") ?: node.caption("extractor_key")
+            ?: provider?.removePrefix("www.") ?: "Media").take(120)
+    }
+
+    private fun parseItem(entry: JSONObject, link: String, provider: String?, index: Int?): MediaItem? {
         if (entry.optBoolean("is_live") || entry.optBoolean("has_drm")) return null
         val array = entry.optJSONArray("formats")
         val formats = if (array == null || array.length() == 0) listOf(entry).filter { !it.isNull("url") }
@@ -180,12 +188,28 @@ internal object PlatformVideoRequest {
                 it.optString("format_note").contains("storyboard", ignoreCase = true)
         }
         val videos = downloadable.filter { imageType(it) == null && it.optString("vcodec") != "none" }
-        val title = entry.optString("title").take(120).ifBlank { "Media" }
+        val title = publicTitle(entry, provider)
         val name = if (index == null) title else "$index-$title"
         val source = MediaSource(link, name = "$name.mp4", platformVideo = true, playlistIndex = index)
         if (videos.isNotEmpty()) {
-            val sizes = videos.mapNotNull(::quality).distinct()
-            return MediaItem(MediaKind.VIDEO, listOf(source) + sizes.map { source.copy(quality = it) })
+            // yt-dlp returns formats in ascending preference order, using the sort order on the request.
+            val audio = downloadable.lastOrNull { it.optString("vcodec") == "none" && it.optString("acodec") != "none" }
+            fun estimate(format: JSONObject): Long? {
+                val videoBytes = formatBytes(format, entry) ?: return null
+                if (format.optString("acodec") != "none" || audio == null) return videoBytes
+                val audioBytes = formatBytes(audio, entry) ?: return null
+                return (videoBytes + audioBytes).takeIf { it > 0 }
+            }
+            fun version(format: JSONObject, size: Quality?) = source.copy(quality = size,
+                estimatedBytes = estimate(format), nativeStreamCount = when {
+                    format.optString("acodec") == "none" && audio != null -> 2
+                    !format.isNull("acodec") -> 1
+                    else -> null
+                })
+            val sizes = videos.asReversed().mapNotNull { format ->
+                quality(format)?.let { version(format, it) }
+            }.distinctBy { it.quality }
+            return MediaItem(MediaKind.VIDEO, listOf(version(videos.last(), null)) + sizes)
         }
 
         // Never use thumbnail/thumbnails. Photos must be independently downloadable payloads.
@@ -195,10 +219,18 @@ internal object PlatformVideoRequest {
             if (uri.host == null || uri.scheme !in setOf("http", "https")) return@mapNotNull null
             val id = format.optString("format_id").takeIf(formatId::matches) ?: return@mapNotNull null
             source.copy(mime = mime, quality = quality(format), name = "$name.${mime.substringAfter('/')}",
-                platformImageFormat = id)
+                platformImageFormat = id, estimatedBytes = formatBytes(format, entry), nativeStreamCount = 1)
         }.sortedByDescending { it.quality?.let { q -> q.width.toLong() * q.height } ?: 0L }
         val original = photos.firstOrNull() ?: return null
         return MediaItem(if (original.mime == "image/gif") MediaKind.GIF else MediaKind.PHOTO, photos)
+    }
+
+    private fun formatBytes(format: JSONObject, entry: JSONObject): Long? {
+        format.bytes("filesize")?.let { return it }
+        format.bytes("filesize_approx")?.let { return it }
+        // yt-dlp reports total bitrate in kilobits/second, duration in seconds.
+        return (format.optDouble("tbr") * entry.optDouble("duration") * 125.0)
+            .takeIf { it.isFinite() && it > 0 && it < Long.MAX_VALUE }?.toLong()
     }
 
     private fun imageType(format: JSONObject): String? = imageTypes[format.optString("ext").lowercase()]
@@ -210,7 +242,11 @@ internal object PlatformVideoRequest {
     }
 
     fun failure(message: String): FailureReason = when {
-        message.contains("No space left", true) || message.contains("failed to initialize", true) -> FailureReason.STORAGE
+        message.contains("No space left", true) -> FailureReason.NO_SPACE
+        message.contains("failed to initialize", true) -> FailureReason.STORAGE
+        listOf("private video", "private account", "login required").any { message.contains(it, true) } -> FailureReason.PRIVATE
+        listOf("has been deleted", "has been removed", "HTTP Error 410", "HTTP Error 404").any { message.contains(it, true) } -> FailureReason.DELETED
+        message.contains("timed out", true) -> FailureReason.TIMEOUT
         listOf("timed out", "unable to connect", "unable to download webpage", "resolve host", "HTTP Error 429", "temporary failure")
             .any { message.contains(it, ignoreCase = true) } && !message.contains("HTTP Error 40") -> FailureReason.NETWORK
         message.contains("Unsupported URL", true) || message.contains("Requested format is not available", true) -> FailureReason.UNSUPPORTED

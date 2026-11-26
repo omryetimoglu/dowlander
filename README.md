@@ -1,91 +1,79 @@
-# eVasi Downloader App
+# eVasi Video Downloader
 
-<img src="app/src/main/res/drawable-xxxhdpi/brand_logo.webp" width="96" alt="eVasi Downloader App logosu">
+<img src="app/src/main/res/drawable-xxxhdpi/brand_logo.webp" width="96" alt="eVasi Video Downloader logosu">
 
-Android 10 ve üzeri için Kotlin ve Jetpack Compose ile geliştirilmiş bir galeriye kaydetme uygulaması.
+Android 10 ve üzeri için video, fotoğraf, GIF ve albüm indirme uygulaması. Varsayılan dil İngilizcedir. **Settings → Language → Türkçe** seçimi sonraki açılışlarda korunur.
 
-[Android 10 ve üzeri için 1.2.1 evrensel APK’yı indir (226 MB)](apk/eVasiApp.apk?raw=true)
+## Kurulum
 
-Bu test APK’sı ARM64, ARMv7, x86 ve x86_64 cihazları destekler. **Evasi X Test** ve önceki GitHub test sürümlerinin üzerine kurulabilir. İlk sürüm (1.0) farklı paket kimliği ve imza kullandığı için yeni sürüm onun yanına ayrı bir uygulama olarak kurulur.
+[2.0.0 evrensel debug APK · 231 MB](https://github.com/omryetimoglu/dowlander/raw/refs/heads/main/apk/eVasiApp.apk?download=1) ARM64, ARMv7, x86 ve x86_64 içerir. GitHub sürümünün paket kimliği `com.evasi.downloader.xtest`, Android Studio’daki varsayılan derlemenin kimliği `com.evasi.downloader` olur. Eski kurulumu yerinde güncellemek için yeni APK aynı paket kimliği ve imzayı taşımalıdır. GitHub’ın kaynak ZIP’inde APK için Git LFS işaretçisi bulunabilir. Telefona kurmak için yukarıdaki APK bağlantısını açın. Klon kullanıyorsanız `git lfs pull` da APK’yı indirir.
 
-APK’nın SHA-256 özeti: `3cdf6179c2b46ef383fe1a986067ffa71188876ff99641857d826e9a12ab207f`. Depoyu klonladığınızda APK’yı indirmek için `git lfs pull` çalıştırabilirsiniz.
+GitHub APK SHA-256 özeti `84692702501fdf1866bb29381785f2c2ff59fe8b5f63ebeb7cc8d0a4936fdbbb`.
+
+Android Studio için GitHub’da **Code → Download ZIP** seçin ve ZIP’i yeni bir klasöre çıkarın. **File → Open** ile içinde `settings.gradle.kts` dosyasını gördüğünüz klasörü açın. Gradle eşitlemesi bitince üstte **app**, yanında emülatörünüzü seçip **▶ Run** düğmesine basın. Projede Gradle Wrapper, Android SDK Platform 35 ve Java 17 kullanılır. Windows’ta aşağıdaki komutlarda `./gradlew` yerine `.\gradlew.bat` yazabilirsiniz.
+
+```sh
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+./gradlew :app:installDebug
+./gradlew :app:connectedDebugAndroidTest
+```
+
+Normal debug çıktısı `app/build/outputs/apk/debug/eVasiApp.apk` olur. GitHub test paketiyle uyumlu derlemeyi oluşturmak için `./gradlew -PgithubApk :app:assembleDebug` çalıştırın.
 
 ## Kullanım
 
-1. Instagram, Facebook, Threads, TikTok, YouTube, X veya Mastodon’dan bir gönderi bağlantısı kopyalayıp uygulamayı açın. Bağlantıyı elle okumak için **Bağlantıyı yapıştır** düğmesini kullanın. Kaynak uygulamanın **Paylaş → eVasi Downloader App** seçeneği indirmeyi doğrudan başlatır.
-2. Pano akışında **Piksel seç** ile sunulan boyutlardan birini seçebilir veya **İndirmeyi başlat** düğmesine dokunabilirsiniz. Otomatik başlatma açıksa iki düğme görünürken varsayılan bekleme süresi 1,5 saniyedir. Kalite seçimine dokunmak bu gönderinin sayacını durdurur. Bu kaynak revizyonundan derlenen uygulama, Android erişilebilirlik ayarında seçtiğiniz daha uzun süreyi bekler. Hassas olarak işaretlenen pano bağlantılarını **Bağlantıyı yapıştır** düğmesiyle açabilirsiniz.
-3. İndirme tamamlandığında **Galeride aç** düğmesine dokunun. Yeni videolar `Movies/eVasi Downloader App`, fotoğraflar `Pictures/eVasi Downloader App` albümüne kaydedilir.
+- **Home** ekranına bağlantıyı yazın, yapıştırın veya bir bağlantıyı kopyaladıktan sonra uygulamayı açın. Önizleme hazır olunca **Select quality** ile kaynağın sunabildiği çözünürlükleri görebilirsiniz. **Start download** indirmeyi kuyruğa alır. Otomatik indirme ilk kurulumda kapalıdır.
+- Android’in **Paylaş → eVasi Video Downloader** seçeneğiyle gönderilen bağlantı veya medya dosyaları doğrudan kuyruğa alınır. Paylaşım menüsünden gelen yeni gönderi panodaki eski bağlantıdan önceliklidir.
+- **Downloads** bekleyen aktarımları sıralamak, duraklatmak, sürdürmek, iptal etmek ve hata veren aktarımı yeniden denemek içindir. Bir aktarım varsayılandır. **Settings** içinden aynı anda çalışacak aktarım sayısını değiştirebilirsiniz. Kesilen dosya yeni bir denemede baştan alınabilir. Tamamlanmış albüm öğeleri kaydedilen kontrol noktalarından tanınır.
+- Videolar **Movies**, görseller **Pictures** altında seçilen albüme kaydedilir. **History** her dosyanın adını, boyutunu, tarihini ve bulunabildiğinde çözünürlüğünü gösterir. Galeride açabilir, Android paylaşım menüsüne gönderebilir veya silebilirsiniz. Ayarlardaki geçmişi temizleme işlemi galerideki dosyaları korur.
+- Kaydedilen dosyayı ana ekrandan doğrudan paylaşabilirsiniz. **X ile giriş**, sağlayıcının mevcut yanıtında bulunan gönderi metnini düzenleme, kopyalama ve dosyayla birlikte gönderme özelliğini açar. Hedef uygulamanın açıklama metnini kullanıp kullanmadığı kendi paylaşım desteğine bağlıdır.
 
-**Settings → Language → Türkçe** ile dili seçebilirsiniz. Pano için otomatik başlatma ayarı da aynı ekrandadır.
+## Platformlar ve içerikler
 
-## Desteklenen bağlantılar
-
-| Kaynak | Medya |
+| Kaynak | Uygulamanın işleyebildiği herkese açık içerik |
 | --- | --- |
-| Instagram ve Facebook | Herkese açık fotoğraf, video, Reels ve görsel ekleri erişilebilen albüm gönderileri |
-| Threads | threads.com ve threads.net üzerindeki herkese açık fotoğraf, video ve albüm gönderileri |
-| TikTok | Fotoğraf slaytları, video gönderileri ve kısa paylaşım bağlantıları |
-| YouTube | Video, Shorts ve youtu.be bağlantıları |
-| X (Twitter) | Herkese açık gönderilerde özgün boyutlu fotoğraflar, MP4 videoları ve karma albümler |
-| Mastodon | Herkese açık gönderilerde fotoğraf, video ve GIFV ekleri |
-| Android paylaşım menüsü | Uygulamaya gönderilen fotoğraf, video ve GIF dosyaları |
+| Instagram | Fotoğraf, video, Reels ve tam ek listesi erişilebilen albüm |
+| Facebook | Fotoğraf, video, Reels ve tam ek listesi erişilebilen albüm |
+| Threads | threads.com veya threads.net üzerindeki fotoğraf, video ve albüm |
+| TikTok | Video, fotoğraf slaytları ve kısa paylaşım bağlantıları |
+| X | Fotoğraf, MP4 video, platformun sunduğu animasyon ve karma albüm |
+| YouTube | Video ve Shorts |
+| Mastodon | Açık gönderilerde fotoğraf, video ve GIFV |
+| Android paylaşım menüsü | Tek veya çoklu fotoğraf, video ve animasyonlu GIF dosyaları |
 
-Instagram, Facebook, TikTok ve YouTube videoları cihazdaki yt-dlp ile çözümlenir. Ayrı sunulan görüntü ve ses akışları gerektiğinde FFmpeg ile birleştirilir. Albüm bağlantıları gönderinin tamamına uygulanır. Örneğin Instagram’daki `img_index=1` yalnızca tarayıcıda seçili görseli belirtir. Uygulama fotoğraf ve videoları gönderi sırasıyla kaydeder. Bir aktarım kesilirse **Yeniden dene** aynı oturumda kaydedilen öğeleri atlar. Oturum açmayı gerektiren içerikler, DRM korumalı videolar ve devam eden canlı yayınlar desteklenmez.
+Kalite ve dosya boyutu seçenekleri kaynağın verdiği bilgiye bağlıdır. Varsayılan seçim her öğenin erişilebilen en yüksek kalitesini alır. Ayrı sunulan ses ve görüntü gerektiğinde cihazdaki FFmpeg ile birleştirilir. Bir platform yalnızca kapak fotoğrafı veya eksik bir liste döndürürse albüm tamamlanamayabilir. Oturum gerektiren özel içerik, DRM ve aktif canlı yayın desteklenmez. Reddit ve Pinterest için doğrulanmış bir çözümleyici sunulmuyor.
 
-Albüm için kaynağın herkese açık olarak sunduğu ek listesi ve dosyalar gerekir. Yalnızca kapak veya eksik bir fotoğraf listesi sunulan albümlerde indirme tamamlanamayabilir. Galeri uygulamasında seçilen birden fazla dosyayı Android paylaşım menüsünden de gönderebilirsiniz.
+## X hesabı ve iletişim yapılandırması
 
-X için otomatik seçim en yüksek bit hızlı MP4’ü kullanır. Mastodon için otomatik seçim her ekin özgün dosyasını alır. Android’in doğrudan paylaştığı medya aynı baytlarla galeriye kopyalanır.
+[config/app.properties](config/app.properties) yalnızca herkese açık istemci kimliği, dönüş adresi ve isteğe bağlı destek e-postası içindir. Boş değerlerle uygulamanın misafir işlevleri kullanılabilir.
 
-## Derleme ve çalıştırma
+1. X Developer Portal’da mobil uygulamayı **Native App / Public Client** olarak kaydedip OAuth 2.0’ı etkinleştirin. Salt okuma izinlerini seçin.
+2. Portalda tam bir dönüş adresi kaydedin. Örnek `com.evasi.downloader://oauth/x`. Aynı adresi `EVASI_X_REDIRECT_URI` ve herkese açık **Client ID** değerini `EVASI_X_CLIENT_ID` olarak yazın. Gerekirse Android Studio ve GitHub test derlemeleri için ayrı uygulama kayıtları ve benzersiz dönüş şemaları kullanın. Doğrulanmış HTTPS yönlendirmesi kullanıyorsanız kendi alan adınızda Android App Links ilişkilendirmesini de yayımlayın.
+3. İsterseniz `EVASI_SUPPORT_EMAIL` değerine destek gelen kutunuzu yazın. Yapılandırma değişikliklerinden sonra APK’yı yeniden derleyin.
+4. Test cihazında **Settings → X** bölümünden sistem tarayıcısını açıp hesabınızla giriş yapın. İzinleri ve uygulamaya dönüşü gözlemleyin. Gönderi metni bulunan bir videoda metni düzenleyip paylaşın, ardından çıkış yaparak metin seçeneğinin tekrar kilitlendiğini doğrulayın.
 
-GitHub’dan **Code → Download ZIP** ile indirdiyseniz ZIP’i yeni bir klasöre çıkarın. Android Studio’da **File → Open** ile içinde `settings.gradle.kts` dosyasını gördüğünüz klasörü seçin. Gradle eşitlemesi bitince üst çubukta **app** ve emülatörünüzü seçip **▶ Run** düğmesine basın.
+OAuth akışı Authorization Code + PKCE (S256) kullanır. İstenen kapsamlar `users.read` ve `tweet.read` ile sınırlıdır. Uygulama adına X’te gönderi yayımlanmaz. Client secret mobil uygulamaya veya depoya girilmez. Kaynak yapılandırma değerleri Gradle projesi özelliği veya aynı adlı ortam değişkeniyle de verilebilir.
 
-Proje Android SDK Platform 35 ve Gradle wrapper kullanır. Java hedefi 17’dir. PowerShell ile çalıştırmak için proje kökünü açın. SDK konumunu `ANDROID_HOME` ile ya da Android Studio’nun oluşturduğu `local.properties` ile belirtebilirsiniz.
+## Release APK ve Google Play
 
-```powershell
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
-.\gradlew.bat :app:installDebug
-adb shell am start -n com.evasi.downloader/.MainActivity
+Yayımlama anahtarı proje sahibine aittir. Şu değerleri makinenizdeki ortam değişkenlerine veya kişisel Gradle ayarlarınıza (`~/.gradle/gradle.properties`) ekleyin. Keystore’u kaynak deposunun dışında saklayın.
+
+| Değer | İçerik |
+| --- | --- |
+| `EVASI_RELEASE_KEYSTORE` | Keystore dosyasının yolu |
+| `EVASI_RELEASE_STORE_PASSWORD` | Keystore parolası |
+| `EVASI_RELEASE_KEY_ALIAS` | İmzalama anahtarının takma adı |
+| `EVASI_RELEASE_KEY_PASSWORD` | Anahtar parolası |
+
+```sh
+./gradlew :app:assembleRelease
+./gradlew :app:bundleRelease
 ```
 
-GitHub’daki test sürümüyle aynı paket kimliğini kullanmak için derleme komutuna `-PgithubApk` ekleyin. Mevcut kurulumu güncellemek için aynı imzalama anahtarını kullanın.
+APK `app/build/outputs/apk/release/`, Android App Bundle ise `app/build/outputs/bundle/release/` altında oluşur. İmzalama yapılandırması boşken release çıktısı imzasız üretilir. Google Play dağıtımında AAB, cihaza uygun yerel kitaplıkların dağıtılmasını sağlar.
 
-Debug APK çıktısı `app/build/outputs/apk/debug/eVasiApp.apk` olur. Kurulum için USB hata ayıklaması açık bir telefon veya çalışan bir Android emülatörü gerekir.
+## Teknik yapı ve doğrulama
 
-Linux ve macOS üzerinde proje kökünde `./gradlew :app:testDebugUnitTest :app:assembleDebug` komutunu kullanın. APK, video çözümleme ve ses birleştirme araçlarını içerir.
+Compose ekranları ViewModel’den gelen durumu gösterir. Room indirme görevlerini, geçmişi ve tamamlanmış albüm öğelerini saklar. WorkManager işi arka planda yürütür. DataStore görünüm ve indirme tercihlerini saklar. MediaStore ile yapılan kayıt için tüm galeriye erişim izni istenmez. Android’in zorla durdurma, güç, ağ ve arka plan çalışma kısıtları görevin ne zaman sürdürülebileceğini etkiler.
 
-## Doğrulama
-
-Birim testleri pano zamanlamasını sanal saatle, kaliteye erken dokunmayı, paylaşımın panoya önceliğini, eski bağlantının atlanmasını ve kesilen indirmeyi yeniden başlatmayı kapsar.
-
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest
-```
-
-Cihaz testleri İngilizce ilk açılışı, Türkçe seçiminin korunmasını, kalite düğmesine basmayı ve art arda paylaşılan iki animasyonlu GIF’in ekran döndüğünde bile galeriye birer kez yazılmasını denetler.
-
-Gerçek bir gönderiyi sınamak için aşağıdaki komutta `GONDERI_URL` yerine tek ekli, herkese açık bir Mastodon gönderisinin tam adresini yazın. Bu test Android paylaşım niyetini gönderir, galerideki kaydın yayımlandığını denetler ve dosyanın SHA-256 özetini sunucunun özgün ekiyle karşılaştırır. Test sonunda oluşturduğu kaydı temizler.
-
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.evasi.downloader.PublicPostTest" "-Pandroid.testInstrumentationRunnerArguments.postUrl=GONDERI_URL"
-```
-
-### Gerçek gönderi kontrolleri
-
-Masaüstü JVM testinde aşağıdaki iki gönderinin gerçek API yanıtları uygulamanın Mastodon çözümleyicisinden geçirildi. Test, özgün ekin tamamını okudu ve dosya türünü imzasından belirledi.
-
-| Gönderi | Özgün dosya | Okunan boyut |
-| --- | --- | ---: |
-| [Thomas Kole’nin örümcek ağı simülasyonu](https://mastodon.gamedev.place/@thomas_kole/116385659543124875) | MP4 · 1080 × 1080 | 8.656.339 bayt |
-| [ephtracy’nin MagicaCSG görseli](https://mastodon.gamedev.place/@ephtracy/113995266669577850) | PNG · 1280 × 832 | 364.187 bayt |
-
-Kaynak ve kayıt testlerini iki gönderiyle birlikte çalıştırabilirsiniz.
-
-```powershell
-$env:EVASI_PUBLIC_POSTS = 'https://mastodon.gamedev.place/@thomas_kole/116385659543124875 https://mastodon.gamedev.place/@ephtracy/113995266669577850'
-.\gradlew.bat :app:testDebugUnitTest
-```
-
-`AlbumDownloadTest`, platformların gönderi ve medya yanıtlarını taklit ederek gerçek Android MediaStore üzerinde Instagram, Facebook, Threads, TikTok ve X albümlerini sınar. Öğe sayısını, sırasını, galeri koleksiyonunu ve kaydedilen baytları denetler.
-
-Cihaz testlerindeki `NativePlatformVideoTest`, yerel bir DASH örneğinin ayrı H.264 görüntü ve AAC ses akışlarını indirir, birleştirilmiş dosyayı MediaStore’a kaydeder ve iki izin de okunabildiğini denetler. Bu test için bir platform hesabı veya harici ağ erişimi gerekmez.
+[Bu sürümün test sonuçları](docs/2.0-test.md) emülatör, yerel örnek ve dış servis doğrulamalarını ayrı belirtir.
