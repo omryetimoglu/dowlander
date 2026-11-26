@@ -1,21 +1,39 @@
-# Evasi Video Dowlander
+# eVasi Dowlander App
 
-[Android 10 ve üzeri için debug APK’yı indir](https://github.com/omryetimoglu/dowlander/raw/refs/heads/main/apk/app-debug.apk)
+Android 10 ve üzeri için Kotlin ve Jetpack Compose ile geliştirilmiş bir galeriye kaydetme uygulaması.
 
-Android 10 ve üzeri için Kotlin ve Jetpack Compose ile geliştirilmiş bir galeriye kaydetme uygulaması. İlk sürüm, Mastodon sunucularının oturum açmadan okunabilen gönderilerini ve Android üzerinden doğrudan paylaşılan medya dosyalarını destekler.
+[Android 10 ve üzeri için 1.1 evrensel APK’yı indir (226 MB)](https://github.com/omryetimoglu/dowlander/raw/refs/heads/main/apk/app-debug.apk)
+
+Bu test APK’sı ARM64, ARMv7, x86 ve x86_64 cihazları destekler. Önceki **Evasi X Test** kurulumunu yerinde günceller. **Evasi Video Dowlander 1.0** farklı paket kimliği ve imza kullandığı için yeni sürüm onun yanına ayrı bir uygulama olarak kurulur.
+
+APK’nın SHA-256 özeti: `66a5adef86ad0fcaee9ebc82d239490cb8627c362b6d1e2d74ac925f47924045`. Depoyu klonladığınızda APK’yı indirmek için `git lfs pull` çalıştırabilirsiniz.
 
 ## Kullanım
 
-- **Paylaş → Evasi Video Dowlander** gönderiyi hemen çözümler. Uygulama her öğenin sunulan özgün dosyasını kaydeder. Doğrudan paylaşılan fotoğraf, video veya GIF dosyaları aynı baytlarla kopyalanır.
-- **Bağlantıyı kopyala** işleminden sonra uygulamayı açın. İki alt düğme de kullanılabilir olduğunda 1,5 saniyelik sayaç başlar. **Piksel seç** düğmesine dokunmak o gönderinin sayacını kalıcı olarak durdurur. **İşlemi başlat** seçilen kaliteyle devam eder.
-- **Settings → Language → Türkçe** seçimi hemen uygulanır ve sonraki açılışta korunur. İlk dil İngilizcedir. **Kopyalanan bağlantıları otomatik başlat** ayarı pano akışını yönetir.
-- Tamamlanan dosyalar, medya türüne göre `Pictures/Evasi Video Dowlander` veya `Movies/Evasi Video Dowlander` albümüne yazılır. **Galeride aç** son kaydedilen öğeyi açar. Çok öğeli bir aktarım kesilirse **Yeniden dene** tamamlanan öğeleri atlar.
+1. Instagram, Facebook, TikTok, YouTube, X veya Mastodon’dan bir gönderi bağlantısı kopyalayıp uygulamayı açın. Bağlantıyı elle okumak için **Bağlantıyı yapıştır** düğmesini kullanın. Kaynak uygulamanın **Paylaş → eVasi Dowlander App** seçeneği indirmeyi doğrudan başlatır.
+2. Pano akışında **Piksel seç** ile sunulan boyutlardan birini seçebilir veya **İndirmeyi başlat** düğmesine dokunabilirsiniz. Otomatik başlatma açıksa iki düğme göründükten 1,5 saniye sonra indirme başlar. Kalite seçimine dokunmak bu gönderinin sayacını durdurur.
+3. İndirme tamamlandığında **Galeride aç** düğmesine dokunun. Yeni videolar `Movies/eVasi Dowlander App`, fotoğraflar `Pictures/eVasi Dowlander App` albümüne kaydedilir.
 
-Mastodon videosunda ses ve görüntü birlikte korunur. Sunucunun GIFV olarak sunduğu animasyon, sunulan video biçiminde kaydedilir. Piksel seçenekleri sunucunun bildirdiği gerçek boyutlardan gelir. Birden fazla öğede panel, tüm öğelerde bulunan ortak boyutları gösterir. Otomatik indirme her öğenin kendi özgün dosyasını kullanır.
+**Settings → Language → Türkçe** ile dili seçebilirsiniz. Pano için otomatik başlatma ayarı da aynı ekrandadır.
 
-## Windows üzerinde derleme ve çalıştırma
+## Desteklenen bağlantılar
 
-Proje Android SDK Platform 35 ve JDK 17 kullanır. Android Studio ile proje kökünü açabilir veya PowerShell üzerinden çalıştırabilirsiniz. SDK konumunu `ANDROID_HOME` ile ya da Android Studio’nun oluşturduğu `local.properties` ile belirtin.
+| Kaynak | Medya |
+| --- | --- |
+| Instagram ve Facebook | Herkese açık video gönderileri, Reels ve paylaşım bağlantıları |
+| TikTok | Video gönderileri ve kısa paylaşım bağlantıları |
+| YouTube | Video, Shorts ve youtu.be bağlantıları |
+| X (Twitter) | Herkese açık gönderilerde X’in sunduğu MP4 videoları |
+| Mastodon | Herkese açık gönderilerde fotoğraf, video ve GIFV ekleri |
+| Android paylaşım menüsü | Uygulamaya gönderilen fotoğraf, video ve GIF dosyaları |
+
+Instagram, Facebook, TikTok ve YouTube videoları cihazdaki yt-dlp ile çözümlenir. Ayrı sunulan görüntü ve ses akışları gerektiğinde FFmpeg ile birleştirilir. Birden fazla video içeren platform gönderilerinde ilk video seçilir. Oturum açmayı gerektiren içerikler, DRM korumalı videolar ve devam eden canlı yayınlar desteklenmez.
+
+X için otomatik seçim en yüksek bit hızlı MP4’ü kullanır. Mastodon için otomatik seçim her ekin özgün dosyasını alır. Android’in doğrudan paylaştığı medya aynı baytlarla galeriye kopyalanır.
+
+## Derleme ve çalıştırma
+
+Proje Android SDK Platform 35 ve Gradle wrapper kullanır. Java hedefi 17’dir. Android Studio ile proje kökünü açabilir veya PowerShell üzerinden çalıştırabilirsiniz. SDK konumunu `ANDROID_HOME` ile ya da Android Studio’nun oluşturduğu `local.properties` ile belirtin.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
@@ -25,7 +43,7 @@ adb shell am start -n com.evasi.downloader/.MainActivity
 
 Debug APK çıktısı `app/build/outputs/apk/debug/app-debug.apk` olur. Kurulum için USB hata ayıklaması açık bir telefon veya çalışan bir Android emülatörü gerekir.
 
-Bu çalışma klasörüne indirilen yerel araçları kullanmak için PowerShell’de `.\.tools\build-local.ps1 :app:testDebugUnitTest :app:assembleDebug` komutunu çalıştırabilirsiniz.
+Linux ve macOS üzerinde proje kökünde `./gradlew :app:testDebugUnitTest :app:assembleDebug` komutunu kullanın. APK, video çözümleme ve ses birleştirme araçlarını içerir.
 
 ## Doğrulama
 
@@ -59,8 +77,4 @@ $env:EVASI_PUBLIC_POSTS = 'https://mastodon.gamedev.place/@thomas_kole/116385659
 .\gradlew.bat :app:testDebugUnitTest
 ```
 
-İki canlı gönderiyle yapılan son çalıştırmada 18 masaüstü testi geçti. Android 10 Robolectric testinde video, kapalı uygulamaya Android paylaşım niyetiyle gönderildi. Fotoğraf, aynı uygulama açıkken paylaşıldı. Panoda başka bir bağlantı ve pano otomatik başlatma ayarı kapalıyken her özgün ek, dosya tabanlı MediaStore test sağlayıcısında doğru koleksiyona birer kez yazıldı. Kaydedilen dosyaların SHA-256 özetleri özgün eklerle eşleşti.
-
-Compose testinde kalite seçenekleri yüklenirken düğmeye dokunulduğunda, parmak kalkmadan otomatik başlatmayı durduran olayın iletildiği doğrulandı. Sanal saat testi 1.499 ms’deki dokunuşun indirmeyi durdurduğunu gösterdi. Doğrudan paylaşılan GIF örneği bayt bayt korundu. Kesik aktarım ve iptal testlerinde bekleyen kayıt silindi.
-
-Fiziksel Android cihazı bağlı değildi. Android 10 emülatörü bu bilgisayarda yazılımsal CPU modunda açılışta kapandı. Sistem paylaşım menüsündeki görünüm, gerçek galeri uygulamasında açma ve cihazı döndürme davranışı telefonda doğrulanamadı. Cihaz test APK’sı başarıyla derlendi.
+Cihaz testlerindeki `NativePlatformVideoTest`, yerel bir DASH örneğinin ayrı H.264 görüntü ve AAC ses akışlarını indirir, birleştirilmiş dosyayı MediaStore’a kaydeder ve iki izin de okunabildiğini denetler. Bu test için bir platform hesabı veya harici ağ erişimi gerekmez.

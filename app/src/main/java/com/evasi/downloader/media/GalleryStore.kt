@@ -19,7 +19,7 @@ internal class GalleryStore(context: Context) {
     private companion object {
         val lock = Any()
         var recovered = false
-        const val album = "Evasi Video Dowlander"
+        const val album = "eVasi Dowlander App"
     }
 
     // Only rows inserted by this app are journaled. A completed row survives a

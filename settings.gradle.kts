@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Evasi Video Dowlander"
+rootProject.name = "eVasi Dowlander App"
 include(":app")

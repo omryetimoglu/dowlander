@@ -68,7 +68,7 @@ class GalleryPublicationTest {
         val output = repo.save(item, null) { _, _ -> }
         assertEquals(media.lastInserted, output)
         assertEquals("image/gif", media.values.getAsString(MediaColumns.MIME_TYPE))
-        assertEquals("Pictures/Evasi Video Dowlander/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
+        assertEquals("Pictures/eVasi Dowlander App/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
         assertTrue(output.path.orEmpty().contains("/images/media/"))
         assertEquals(listOf("pending", "write", "publish"), media.events)
         assertArrayEquals(gif, media.output.readBytes())

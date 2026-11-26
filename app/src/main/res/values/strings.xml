@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Evasi Video Dowlander</string>
+    <string name="app_name">eVasi Dowlander App</string>
     <string name="settings">Settings</string>
     <string name="language">Language</string>
     <string name="english">English</string>
@@ -17,8 +17,8 @@
     <string name="notification_progress">Saving media to your gallery</string>
     <string name="notification_open">Open in gallery</string>
     <string name="notification_preparing">Preparing shared media</string>
-    <string name="idle_title">Save media to your gallery</string>
-    <string name="idle_intro">Copy a public Mastodon post link and open this app. You can also use the Android share menu to send a post, photo, video, or GIF.</string>
+    <string name="idle_title">Save to gallery</string>
+    <string name="idle_intro">Paste a public post link or share media directly to the app.</string>
     <string name="paste_link">Paste link</string>
     <string name="paste_missing">Copy a post link first.</string>
     <string name="select_quality">Select quality</string>
@@ -29,12 +29,9 @@
     <string name="clipboard_label">Copied link</string>
     <string name="share_label">Shared media</string>
     <string name="preparing_title">Preparing media</string>
-    <string name="preparing_hint">Looking for the media in this post…</string>
     <string name="ready_title">Ready to download</string>
-    <string name="ready_hint">Choose a quality or start your download.</string>
     <string name="countdown_hint">Starting automatically</string>
     <string name="download_title">Saving to gallery</string>
-    <string name="download_hint">Downloading your media…</string>
     <string name="saved_title">Saved to gallery</string>
     <plurals name="saved_items">
         <item quantity="one">%d item saved</item>
@@ -45,7 +42,6 @@
     <string name="open_gallery">Open in gallery</string>
     <string name="cancel">Cancel</string>
     <string name="cancelled_title">Download cancelled</string>
-    <string name="cancelled_hint">You can retry this download or paste another link.</string>
     <string name="retry">Retry</string>
     <string name="failed_title">Couldn’t save media</string>
     <string name="error_network">The connection was interrupted. Check your internet connection and retry.</string>

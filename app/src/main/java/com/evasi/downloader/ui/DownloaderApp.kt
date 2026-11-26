@@ -42,9 +42,9 @@ import com.evasi.downloader.R
 import kotlin.math.roundToInt
 
 private val palette = lightColorScheme(
-    primary = Accent, onPrimary = Color.White, primaryContainer = Lilac, onPrimaryContainer = Ink,
+    primary = Accent, onPrimary = Color.White, primaryContainer = Mint, onPrimaryContainer = Ink,
     surface = Color.White, onSurface = Ink, onSurfaceVariant = Muted, background = Paper,
-    onBackground = Ink, outline = Line, secondaryContainer = Lilac,
+    onBackground = Ink, outline = Line, secondaryContainer = Mint,
 )
 
 @Composable
@@ -65,7 +65,7 @@ fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                     } else {
                         Box(Modifier.padding(start = 4.dp).size(38.dp).background(Ink, RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center) {
-                            Glyph(Mark.Logo, Color(0xFFC9B9FF), Modifier.size(23.dp))
+                            Glyph(Mark.Logo, Color(0xFFB5F5CC), Modifier.size(23.dp))
                         }
                         Spacer(Modifier.width(10.dp))
                     }
@@ -76,6 +76,7 @@ fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                     )
                     if (!settings) IconAction(Mark.Settings, R.string.settings) { settings = true }
                 }
+                HorizontalDivider(color = Line)
                 if (settings) SettingsContent(state, onEvent) { languagePanel = true }
                 else Home(state, onEvent)
             }
@@ -99,68 +100,91 @@ private fun IconAction(mark: Mark, description: Int, action: () -> Unit) {
 @Composable
 private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
     val picking = state.source == Source.Clipboard && state.phase in listOf(Phase.Preparing, Phase.Ready)
-    Column(
-        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = 22.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        if (state.phase == Phase.Idle || state.phase == Phase.Saved) TransferArtwork(state.phase == Phase.Saved)
-        val title = when (state.phase) {
-            Phase.Idle -> R.string.idle_title
-            Phase.Preparing -> R.string.preparing_title
-            Phase.Ready -> R.string.ready_title
-            Phase.Downloading -> if (state.resolving) R.string.preparing_title else R.string.download_title
-            Phase.Saved -> R.string.saved_title
-            Phase.Failed -> R.string.failed_title
-            Phase.Cancelled -> R.string.cancelled_title
-        }
-        val hint = when (state.phase) {
-            Phase.Idle -> stringResource(R.string.idle_intro)
-            Phase.Preparing -> stringResource(R.string.preparing_hint)
-            Phase.Ready -> stringResource(R.string.ready_hint)
-            Phase.Downloading -> stringResource(if (state.resolving) R.string.preparing_hint else R.string.download_hint)
-            Phase.Saved -> savedText(state.savedCount)
-            Phase.Cancelled -> stringResource(R.string.cancelled_hint)
-            Phase.Failed -> stringResource(errorMessage(state.error))
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        // Keep the main action next to the status. The whole group can scroll on short
+        // screens and with large system fonts.
+        val viewportHeight = maxHeight
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = viewportHeight)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        ) {
+            val title = when (state.phase) {
+                Phase.Idle -> R.string.idle_title
+                Phase.Preparing -> R.string.preparing_title
+                Phase.Ready -> R.string.ready_title
+                Phase.Downloading -> if (state.resolving) R.string.preparing_title else R.string.download_title
+                Phase.Saved -> R.string.saved_title
+                Phase.Failed -> R.string.failed_title
+                Phase.Cancelled -> R.string.cancelled_title
+            }
+            val mark = when (state.phase) {
+                Phase.Idle, Phase.Downloading -> Mark.Download
+                Phase.Preparing, Phase.Ready -> Mark.Link
+                Phase.Saved -> Mark.Check
+                Phase.Failed -> Mark.Repeat
+                Phase.Cancelled -> Mark.Close
+            }
+            val hint = when (state.phase) {
+                Phase.Idle -> stringResource(R.string.idle_intro)
+                Phase.Failed -> stringResource(errorMessage(state.error))
+                Phase.Saved -> savedText(state.savedCount)
+                else -> ""
+            }
+            Box(Modifier.size(64.dp).background(Mint, RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
+                Glyph(mark, Accent, Modifier.size(31.dp))
+            }
+            Spacer(Modifier.height(18.dp))
             Text(stringResource(title), Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-                color = Ink, fontSize = 34.sp, lineHeight = 39.sp,
-                letterSpacing = (-1.3).sp, fontWeight = FontWeight.Bold)
-            if (hint.isNotEmpty()) Text(hint, color = Muted, fontSize = 16.sp, lineHeight = 24.sp)
-        }
-        if (state.source != Source.None && state.phase != Phase.Idle) SourceCard(state)
-        if (state.phase == Phase.Downloading || (state.phase == Phase.Preparing && state.source == Source.Share)) {
-            TransferProgress(state)
-        }
-        if (state.savedCount > 0 && state.phase in listOf(Phase.Cancelled, Phase.Failed)) {
-            Text(savedText(state.savedCount), color = Ink, fontSize = 15.sp)
+                color = Ink, fontSize = 30.sp, lineHeight = 36.sp, textAlign = TextAlign.Center,
+                letterSpacing = (-1).sp, fontWeight = FontWeight.SemiBold)
+            if (hint.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(hint, Modifier.widthIn(max = 340.dp), color = Muted, textAlign = TextAlign.Center,
+                    fontSize = 16.sp, lineHeight = 23.sp)
+            }
+            if (state.source != Source.None && state.phase !in listOf(Phase.Idle, Phase.Saved)) {
+                Spacer(Modifier.height(18.dp))
+                SourceCard(state)
+            }
+            if (state.phase == Phase.Downloading) {
+                Spacer(Modifier.height(12.dp))
+                TransferProgress(state)
+            }
+            if (state.savedCount > 0 && state.phase in listOf(Phase.Cancelled, Phase.Failed)) {
+                Spacer(Modifier.height(8.dp))
+                Text(savedText(state.savedCount), color = Muted)
+            }
+            if (!picking) Column(Modifier.padding(top = 24.dp).widthIn(max = 440.dp).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when (state.phase) {
+                    Phase.Idle -> Action(R.string.paste_link, Mark.Clipboard) { onEvent(UiEvent.Paste) }
+                    Phase.Preparing, Phase.Ready, Phase.Downloading ->
+                        Action(R.string.cancel, Mark.Close, primary = false) { onEvent(UiEvent.Cancel) }
+                    Phase.Saved -> {
+                        Action(R.string.open_gallery, Mark.Gallery) { onEvent(UiEvent.OpenGallery) }
+                        Action(R.string.paste_link, Mark.Clipboard, primary = false) { onEvent(UiEvent.Paste) }
+                    }
+                    Phase.Failed, Phase.Cancelled -> {
+                        val canRetry = state.phase == Phase.Cancelled ||
+                            state.error !in listOf(UiError.InvalidLink, UiError.Unsupported, UiError.NoMedia)
+                        if (canRetry) Action(R.string.retry, Mark.Repeat) { onEvent(UiEvent.Retry) }
+                        if (state.savedCount > 0)
+                            Action(R.string.open_gallery, Mark.Gallery, primary = false) { onEvent(UiEvent.OpenGallery) }
+                        Action(R.string.paste_link, Mark.Clipboard, primary = !canRetry) { onEvent(UiEvent.Paste) }
+                    }
+                }
+            }
         }
     }
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        if (picking) {
+    if (picking) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             state.countdown?.let {
                 Text(stringResource(R.string.countdown_hint), color = Muted, fontSize = 13.sp)
                 Rail(it)
             }
             ClipboardActions(state, onEvent)
-        } else when (state.phase) {
-            Phase.Idle -> Action(R.string.paste_link, Mark.Clipboard) { onEvent(UiEvent.Paste) }
-            Phase.Preparing, Phase.Ready, Phase.Downloading ->
-                Action(R.string.cancel, Mark.Close, primary = false) { onEvent(UiEvent.Cancel) }
-            Phase.Saved -> {
-                Action(R.string.open_gallery, Mark.Gallery) { onEvent(UiEvent.OpenGallery) }
-                Action(R.string.paste_link, Mark.Clipboard, primary = false) { onEvent(UiEvent.Paste) }
-            }
-            Phase.Failed, Phase.Cancelled -> {
-                val canRetry = state.phase == Phase.Cancelled ||
-                    state.error !in listOf(UiError.InvalidLink, UiError.Unsupported, UiError.NoMedia)
-                if (canRetry) Action(R.string.retry, Mark.Repeat) { onEvent(UiEvent.Retry) }
-                if (state.savedCount > 0)
-                    Action(R.string.open_gallery, Mark.Gallery, primary = false) { onEvent(UiEvent.OpenGallery) }
-                Action(R.string.paste_link, Mark.Clipboard, primary = !canRetry) { onEvent(UiEvent.Paste) }
-            }
         }
     }
 }
@@ -185,18 +209,17 @@ private fun errorMessage(error: UiError?): Int = when (error) {
 private fun SourceCard(state: ScreenState) {
     val fromShare = state.source == Source.Share
     val url = state.link.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
-    Surface(color = Color.White, border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(18.dp)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+    Surface(modifier = Modifier.widthIn(max = 440.dp), color = Color.White,
+        border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(14.dp)) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-            Box(Modifier.size(42.dp).background(Lilac, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Glyph(if (fromShare) Mark.Share else Mark.Link, Accent, Modifier.size(22.dp))
-            }
+            Glyph(if (fromShare) Mark.Share else Mark.Link, Accent, Modifier.size(20.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(stringResource(if (fromShare) R.string.share_label else R.string.clipboard_label),
                     color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (state.title.isNotBlank() && state.title != url) Text(state.title, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (url != null) Text(url, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Muted,
+                if (url != null) Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Muted,
                     fontSize = 14.sp, lineHeight = 19.sp)
             }
         }
@@ -223,10 +246,10 @@ private fun TransferProgress(state: ScreenState) {
 @Composable
 private fun Rail(progress: Float?) {
     if (progress == null) {
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Lilac)
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Mint)
     } else {
         val fraction = progress.coerceIn(0f, 1f)
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Lilac).progressSemantics(fraction)) {
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Mint).progressSemantics(fraction)) {
             Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Accent, CircleShape))
         }
     }
@@ -271,7 +294,7 @@ private fun Action(
     resource: Int, icon: Mark?, modifier: Modifier = Modifier.fillMaxWidth(),
     primary: Boolean = true, label: String? = null, onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(14.dp)
     val foreground = if (primary) Color.White else Ink
     Row(
         modifier.heightIn(min = 56.dp).clip(shape)
@@ -399,7 +422,7 @@ private fun LanguagePanel(current: String, dismiss: () -> Unit, select: (String)
 private fun ChoiceRow(title: String, selected: Boolean, choose: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Lilac else Color.Transparent)
+            .background(if (selected) Mint else Color.Transparent)
             .selectable(selected = selected, onClick = choose, role = Role.RadioButton)
             .padding(horizontal = 14.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,

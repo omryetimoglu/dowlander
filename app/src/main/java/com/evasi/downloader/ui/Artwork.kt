@@ -1,36 +1,27 @@
 package com.evasi.downloader.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.unit.dp
 
-internal val Ink = Color(0xFF1E1B30)
-internal val Muted = Color(0xFF625F71)
-internal val Accent = Color(0xFF5943BD)
-internal val Paper = Color(0xFFF8F8FC)
-internal val Line = Color(0xFFDFDDE9)
-internal val Lilac = Color(0xFFEDE9FF)
-private val Lime = Color(0xFFC6F382)
+internal val Ink = Color(0xFF152D29)
+internal val Muted = Color(0xFF53655F)
+internal val Accent = Color(0xFF176752)
+internal val Paper = Color(0xFFF8F9F5)
+internal val Line = Color(0xFFD4DFD7)
+internal val Mint = Color(0xFFE2F2E8)
 
-internal enum class Mark { Logo, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
+internal enum class Mark { Logo, Check, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
 
 private fun line(vararg coordinates: Float, closed: Boolean = false): Path = Path().apply {
     moveTo(coordinates[0], coordinates[1])
@@ -53,6 +44,7 @@ internal fun Glyph(mark: Mark, color: Color, modifier: Modifier) {
                     drawPath(line(6f, 9f, 18f, 9f, 12f, 17f, closed = true), color)
                     path(2f, 16f, 2f, 22f, 22f, 22f, 22f, 16f)
                 }
+                Mark.Check -> path(4.5f, 12f, 10f, 17.5f, 20f, 7f)
                 Mark.Download -> {
                     path(12f, 3f, 12f, 14f)
                     path(7.5f, 10f, 12f, 14.5f, 16.5f, 10f)
@@ -121,65 +113,6 @@ internal fun Glyph(mark: Mark, color: Color, modifier: Modifier) {
                         drawCircle(color, 2.8f, point)
                     }
                 }
-            }
-        }
-    }
-}
-
-/** A compact media-to-gallery diagram. It scales without cropping on narrow phones. */
-@Composable
-internal fun TransferArtwork(saved: Boolean) {
-    Canvas(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(24.dp))) {
-        drawRect(Brush.linearGradient(listOf(Color(0xFF211B37), Color(0xFF332B4B))))
-        val unit = minOf(size.width / 340f, size.height / 168f)
-        val spacing = 13f * unit
-        var x = size.width / 2 % spacing
-        while (x < size.width) {
-            var y = size.height / 2 % spacing
-            while (y < size.height) {
-                drawCircle(Color.White.copy(alpha = 0.17f), unit * 0.7f, Offset(x, y))
-                y += spacing
-            }
-            x += spacing
-        }
-        withTransform({
-            translate((size.width - 340f * unit) / 2f, (size.height - 168f * unit) / 2f)
-            scale(unit, unit, Offset.Zero)
-        }) {
-            val lavender = Color(0xFFD2C8F5)
-            val deep = Color(0xFF383045)
-            val route = Path().apply {
-                moveTo(100f, 92f); lineTo(149f, 92f)
-                cubicTo(163f, 92f, 162f, 74f, 177f, 74f); lineTo(235f, 74f)
-            }
-            drawPath(route, Lime, style = Stroke(width = 1.7f, cap = StrokeCap.Round,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 5f))))
-
-            rotate(-10f, Offset(85f, 88f)) {
-                drawRoundRect(Color.Black.copy(alpha = 0.2f), Offset(48f, 54f), Size(80f, 76f), CornerRadius(9f))
-                drawRoundRect(lavender, Offset(45f, 49f), Size(80f, 76f), CornerRadius(9f))
-                drawRoundRect(Color(0xFF7F6AA7), Offset(52f, 56f), Size(66f, 44f), CornerRadius(4f))
-                drawPath(line(80f, 69f, 80f, 87f, 95f, 78f, closed = true), Color(0xFFF8F3FF))
-                drawRoundRect(deep, Offset(53f, 107f), Size(40f, 3f), CornerRadius(1.5f))
-                drawRoundRect(Color(0xFF9E8EBC), Offset(53f, 114f), Size(28f, 2.5f), CornerRadius(1.25f))
-            }
-            rotate(13f, Offset(252f, 83f)) {
-                drawRoundRect(Color(0xFF9480B4), Offset(205f, 50f), Size(91f, 70f), CornerRadius(7f))
-            }
-            rotate(-6f, Offset(245f, 82f)) {
-                drawRoundRect(Color(0xFFF0EBFF), Offset(201f, 43f), Size(91f, 74f), CornerRadius(7f))
-                drawRoundRect(Color(0xFFD4C6F1), Offset(207f, 49f), Size(79f, 61f), CornerRadius(4f))
-                drawCircle(Color(0xFFF8F3FF), 6f, Offset(268f, 63f))
-                drawPath(line(211f, 104f, 231f, 76f, 252f, 103f, 264f, 86f, 281f, 104f, closed = true), Color(0xFF796591))
-            }
-            drawCircle(deep, 16.5f, Offset(288f, 111f))
-            drawCircle(Lime, 14.5f, Offset(288f, 111f))
-            val badge = Stroke(width = 2.3f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            if (saved) {
-                drawPath(line(281f, 111f, 286f, 116f, 295f, 106f), deep, style = badge)
-            } else {
-                drawLine(deep, Offset(288f, 104f), Offset(288f, 116f), 2.3f, StrokeCap.Round)
-                drawPath(line(282.5f, 111f, 288f, 116.5f, 293.5f, 111f), deep, style = badge)
             }
         }
     }

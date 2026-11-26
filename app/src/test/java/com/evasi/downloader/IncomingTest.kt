@@ -11,6 +11,21 @@ class IncomingTest {
         assertNull(SharedLinks.extract("an ordinary caption #video"))
     }
 
+    @Test fun prefersAnXVideoPostInCopiedOrSharedText() {
+        val post = "https://x.com/militerenstitu/status/2125825261702635789?a=sPEOnbXrlYwpbvGsINM&s=20"
+        assertEquals(post, SharedLinks.extract(post))
+        assertEquals(post, SharedLinks.extract("Kaynak https://example.org/news ve video ($post)."))
+    }
+
+    @Test fun prefersSocialVideoOverUnrelatedCaptionLinks() {
+        for (post in listOf(
+            "https://www.facebook.com/share/v/AbC12/",
+            "https://instagram.com/reel/AbC_1/?igsh=xyz",
+            "https://vm.tiktok.com/AbC32/",
+            "https://youtu.be/aA1_-bB2cC3?si=1",
+        )) assertEquals(post, SharedLinks.extract("Daha fazla bilgi https://example.org. Video ($post)."))
+    }
+
     @Test fun ignoresTheOldClipboardAfterProcessingOrReceivingAShare() {
         val history = ClipboardRecord("https://example.org/a", 1000, 2000)
         assertFalse(history.isNew("https://example.org/a", 1000))

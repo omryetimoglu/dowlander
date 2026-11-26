@@ -12,6 +12,7 @@ data class MediaSource(
     val mime: String? = null,
     val quality: Quality? = null,
     val name: String? = null,
+    val platformVideo: Boolean = false,
 )
 
 data class MediaItem(val kind: MediaKind, val sources: List<MediaSource>)

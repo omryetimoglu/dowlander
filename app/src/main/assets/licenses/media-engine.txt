@@ -1,0 +1,9 @@
+Android media integration
+youtubedl-android, version 0.18.1, including Python, QuickJS and FFmpeg
+Source and build instructions: https://github.com/yausername/youtubedl-android/tree/0.18.1
+The published library and ffmpeg AARs are obtained from Maven Central.
+
+Bundled yt-dlp zipapp: 2026.11.23, unmodified release asset
+Source and binaries: https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.23
+Release checksum (SHA-256): e8665ed64d6b9172773e812f891fb707a0cb1ee8d9ef4fc1acb00cabee4c5256
+This file is packaged as res/raw/ytdlp. See yt-dlp.txt and yt-dlp-third-party.txt.

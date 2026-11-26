@@ -1,5 +1,7 @@
 package com.evasi.downloader
 
+import com.evasi.downloader.media.SocialVideoLinks
+import com.evasi.downloader.media.XPost
 import java.net.URI
 
 internal sealed interface Incoming {
@@ -20,10 +22,12 @@ internal object SharedLinks {
                 url = url.dropLast(1)
             }
             url = url.trimEnd(']', '}')
-            val parsed = runCatching { URI(url) }.getOrNull()
-            url.takeIf { parsed?.host != null && parsed.rawUserInfo == null }
+            runCatching { URI(url) }.getOrNull()?.takeIf { uri -> uri.host != null && uri.rawUserInfo == null }
         }.take(20).toList()
-        return urls.firstOrNull { status.containsMatchIn(URI(it).path.orEmpty()) } ?: urls.firstOrNull()
+        val post = urls.firstOrNull { uri ->
+            XPost.statusId(uri) != null || SocialVideoLinks.match(uri) != null || status.containsMatchIn(uri.path.orEmpty())
+        }
+        return (post ?: urls.firstOrNull())?.toString()
     }
 }
 

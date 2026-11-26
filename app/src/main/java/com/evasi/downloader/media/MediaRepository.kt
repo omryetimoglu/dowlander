@@ -21,13 +21,17 @@ class MediaRepository(context: Context) {
     private val app = context.applicationContext
     private val resolver = app.contentResolver
     private val gallery = GalleryStore(app)
+    private val platformVideo by lazy { PlatformVideo(app) }
 
     suspend fun recoverInterrupted() = withContext(Dispatchers.IO) { gallery.recover() }
 
     suspend fun resolve(link: String): MediaPost = withContext(Dispatchers.IO) {
         val job = coroutineContext.job
-        val endpoint = Mastodon.endpoint(link)
-        http(endpoint, "application/json", job) { response ->
+        val uri = runCatching { URI(link) }.getOrNull() ?: throw MediaFailure(FailureReason.INVALID)
+        val videoLink = SocialVideoLinks.match(uri)
+        if (videoLink != null) return@withContext platformVideo.resolve(videoLink.toString())
+        val request = PostRequest.from(link)
+        http(request.endpoint, "application/json", job) { response ->
             response.inputStream.use { stream ->
                 val bytes = ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
@@ -39,7 +43,7 @@ class MediaRepository(context: Context) {
                     bytes.write(buffer, 0, count)
                 }
                 try {
-                    Mastodon.parse(bytes.toString("UTF-8"))
+                    request.parse(bytes.toString("UTF-8"))
                 } catch (e: JSONException) {
                     throw MediaFailure(FailureReason.UNSUPPORTED, e)
                 }
@@ -83,6 +87,14 @@ class MediaRepository(context: Context) {
                 gallery.recover()
                 val uri = Uri.parse(source.uri)
                 val onInsert: (Uri) -> Unit = { inserted = it }
+                if (source.platformVideo) {
+                    return@withContext platformVideo.download(source, onProgress) { file ->
+                        file.inputStream().use { input ->
+                            gallery.write(input, source.mime, source.name, file.length(), FailureReason.STORAGE,
+                                item.kind, job, onInsert, onProgress)
+                        }
+                    }
+                }
                 when (uri.scheme?.lowercase()) {
                     "content" -> withSharedInput(uri) { stream ->
                         gallery.write(stream, source.mime, source.name, sharedInfo(uri).second,
@@ -142,7 +154,7 @@ class MediaRepository(context: Context) {
                     connection.readTimeout = 15_000
                     connection.setRequestProperty("Accept", accept)
                     connection.setRequestProperty("Accept-Encoding", "identity")
-                    connection.setRequestProperty("User-Agent", "EvasiVideoDowlander/1.0 (Android)")
+                    connection.setRequestProperty("User-Agent", "eVasiDowlanderApp/1.1 (Android)")
                     when (val status = connection.responseCode) {
                         200 -> return block(connection)
                         301, 302, 303, 307, 308 -> {

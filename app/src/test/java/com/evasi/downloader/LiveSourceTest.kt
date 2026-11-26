@@ -1,6 +1,6 @@
 package com.evasi.downloader
 
-import com.evasi.downloader.media.Mastodon
+import com.evasi.downloader.media.PostRequest
 import com.evasi.downloader.media.MediaFormat
 import java.io.InputStream
 import java.net.URL
@@ -16,8 +16,8 @@ class LiveSourceTest {
         val links = System.getenv("EVASI_PUBLIC_POSTS").orEmpty().split(' ').filter(String::isNotBlank)
         assumeTrue("Set EVASI_PUBLIC_POSTS to run the live-source check", links.isNotEmpty())
         for (link in links) {
-            val endpoint = Mastodon.endpoint(link)
-            val post = request(endpoint.toURL()) { stream, _ -> Mastodon.parse(stream.bufferedReader().readText()) }
+            val postRequest = PostRequest.from(link)
+            val post = request(postRequest.endpoint.toURL()) { stream, _ -> postRequest.parse(stream.bufferedReader().readText()) }
             assertTrue("No attachment in $link", post.items.isNotEmpty())
             for (item in post.items) {
                 val source = item.sources.first()
