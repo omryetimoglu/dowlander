@@ -6,7 +6,7 @@ import java.net.URI
 
 internal sealed interface Incoming {
     data class Link(val url: String) : Incoming
-    data class File(val uri: String, val mime: String?) : Incoming
+    data class Files(val uris: List<String>, val mime: String?) : Incoming
     data object Invalid : Incoming
 }
 

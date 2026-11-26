@@ -27,6 +27,13 @@ class SocialVideoLinksTest {
             "https://www.tiktok.com/@burak_dag06/video/7705780212738575636?is_from_webapp=1&sender_device=pc" to
                 "https://www.tiktok.com/@burak_dag06/video/7705780212738575636",
             "https://m.facebook.com/watch/?ref=sharing&v=12345" to "https://www.facebook.com/watch/?v=12345",
+            "https://m.facebook.com/photo.php?ref=share&fbid=123" to "https://www.facebook.com/photo/?fbid=123",
+            "https://facebook.com/photo/?fbid=123&set=a.9" to "https://www.facebook.com/photo/?fbid=123",
+            "https://facebook.com/story.php?id=123&story_fbid=pfbidAb1&tracking=1" to
+                "https://www.facebook.com/story.php?story_fbid=pfbidAb1&id=123",
+            "https://facebook.com/photo.php?v=123" to "https://www.facebook.com/watch/?v=123",
+            "https://www.tiktok.com/@example/photo/7240568259186019630?lang=en" to
+                "https://www.tiktok.com/@example/photo/7240568259186019630",
             "https://www.facebook.com/share/r/Ab2/?mibextid=1" to "https://www.facebook.com/share/r/Ab2/",
             "https://fb.watch/xTh_8Zo/" to "https://fb.watch/xTh_8Zo/",
             "https://facebook.com/reel/456" to "https://www.facebook.com/reel/456/",

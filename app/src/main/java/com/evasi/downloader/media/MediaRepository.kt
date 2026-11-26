@@ -17,7 +17,12 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 
-class MediaRepository(context: Context) {
+class MediaRepository internal constructor(
+    context: Context,
+    private val openConnection: (URI) -> HttpURLConnection,
+) {
+    constructor(context: Context) : this(context, { it.toURL().openConnection() as HttpURLConnection })
+
     private val app = context.applicationContext
     private val resolver = app.contentResolver
     private val gallery = GalleryStore(app)
@@ -29,25 +34,75 @@ class MediaRepository(context: Context) {
         val job = coroutineContext.job
         val uri = runCatching { URI(link) }.getOrNull() ?: throw MediaFailure(FailureReason.INVALID)
         val videoLink = SocialVideoLinks.match(uri)
-        if (videoLink != null) return@withContext platformVideo.resolve(videoLink.toString())
+        if (videoLink != null) {
+            return@withContext resolveSocialAlbum(videoLink, job) ?: platformVideo.resolve(videoLink.toString())
+        }
         val request = PostRequest.from(link)
         http(request.endpoint, "application/json", job) { response ->
-            response.inputStream.use { stream ->
-                val bytes = ByteArrayOutputStream()
-                val buffer = ByteArray(8192)
-                while (true) {
-                    job.ensureActive()
-                    val count = stream.read(buffer)
-                    if (count < 0) break
-                    if (bytes.size() + count > 2 * 1024 * 1024) throw MediaFailure(FailureReason.UNSUPPORTED)
-                    bytes.write(buffer, 0, count)
-                }
-                try {
-                    request.parse(bytes.toString("UTF-8"))
-                } catch (e: JSONException) {
-                    throw MediaFailure(FailureReason.UNSUPPORTED, e)
-                }
+            try {
+                request.parse(readBody(response, job, 2 * 1024 * 1024))
+            } catch (e: JSONException) {
+                throw MediaFailure(FailureReason.UNSUPPORTED, e)
             }
+        }
+    }
+
+    private fun resolveSocialAlbum(link: URI, job: Job): MediaPost? {
+        val instagram = InstagramAlbum.endpoint(link)
+        val facebook = FacebookAlbum.endpoint(link)
+        val threads = ThreadsAlbum.endpoint(link)
+        val tiktok = TikTokAlbum.isCandidate(link) || TikTokAlbum.isVideoCandidate(link)
+        if (instagram == null && facebook == null && threads == null && !tiktok) return null
+
+        val pageHosts = when {
+            instagram != null -> setOf("instagram.com", "instagr.am")
+            facebook != null -> setOf("facebook.com", "fb.watch")
+            threads != null -> setOf("threads.com", "threads.net")
+            else -> setOf("tiktok.com")
+        }
+        fun fetchPage(url: URI): Pair<URI, String> = http(url, "text/html", job, browser = true,
+            allowedHosts = pageHosts) { response ->
+            response.url.toURI() to readBody(response, job, 8 * 1024 * 1024)
+        }
+
+        // A video can still be available to the native extractor when the HTML page is unavailable.
+        // Once the page identifies a carousel, propagate parser/child failures to avoid partial albums.
+        var receivedPage = false
+        fun requestPage(url: URI) = fetchPage(url).also { receivedPage = true }
+        return try {
+            when {
+                instagram != null -> {
+                    val (page, html) = requestPage(instagram)
+                    InstagramAlbum.parse(html, page)
+                }
+                facebook != null -> {
+                    val (page, html) = requestPage(facebook)
+                    FacebookAlbum.parse(html, page) { photo -> fetchPage(photo).second }
+                }
+                threads != null -> {
+                    val (page, html) = requestPage(threads)
+                    ThreadsAlbum.parse(html, page) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
+                }
+                else -> TikTokAlbum.probe(link, ::requestPage)
+            }
+        } catch (error: MediaFailure) {
+            if (receivedPage || threads != null || link.path.contains("/photo/") || link.path == "/photo.php") throw error
+            null
+        }
+    }
+
+    private fun readBody(response: HttpURLConnection, job: Job, limit: Int): String {
+        response.inputStream.use { stream ->
+            val bytes = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                job.ensureActive()
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (bytes.size() + count > limit) throw MediaFailure(FailureReason.UNSUPPORTED)
+                bytes.write(buffer, 0, count)
+            }
+            return bytes.toString("UTF-8")
         }
     }
 
@@ -100,7 +155,7 @@ class MediaRepository(context: Context) {
                         gallery.write(stream, source.mime, source.name, sharedInfo(uri).second,
                             FailureReason.INVALID, null, job, onInsert, onProgress)
                     }
-                    "https" -> http(URI(source.uri), "image/*, video/*, application/octet-stream", job) { response ->
+                    "https" -> http(URI(source.uri), "image/*, video/*, application/octet-stream", job, referer = source.referer) { response ->
                         response.inputStream.use { stream ->
                             val total = response.contentLengthLong.takeIf { it >= 0 }
                             gallery.write(stream, response.contentType?.substringBefore(';'), source.name,
@@ -139,7 +194,10 @@ class MediaRepository(context: Context) {
         }
     }
 
-    private fun <T> http(start: URI, accept: String, job: Job, block: (HttpURLConnection) -> T): T {
+    private fun <T> http(
+        start: URI, accept: String, job: Job, browser: Boolean = false, referer: String? = null,
+        allowedHosts: Set<String>? = null, block: (HttpURLConnection) -> T,
+    ): T {
         var target = start
         try {
             repeat(6) {
@@ -147,14 +205,20 @@ class MediaRepository(context: Context) {
                 if (!target.scheme.equals("https", true) || target.host == null || target.userInfo != null) {
                     throw MediaFailure(FailureReason.UNSUPPORTED)
                 }
-                val connection = target.toURL().openConnection() as HttpURLConnection
+                if (allowedHosts != null && (target.port !in setOf(-1, 443) || allowedHosts.none {
+                    target.host.equals(it, true) || target.host.endsWith(".$it", true)
+                })) throw MediaFailure(FailureReason.UNAVAILABLE)
+                val connection = openConnection(target)
                 try {
                     connection.instanceFollowRedirects = false
                     connection.connectTimeout = 12_000
                     connection.readTimeout = 15_000
                     connection.setRequestProperty("Accept", accept)
                     connection.setRequestProperty("Accept-Encoding", "identity")
-                    connection.setRequestProperty("User-Agent", "eVasiDowlanderApp/1.1 (Android)")
+                    connection.setRequestProperty("User-Agent", if (browser || referer != null)
+                        "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+                        else "eVasiDowlanderApp/1.2 (Android)")
+                    if (referer != null) connection.setRequestProperty("Referer", referer)
                     when (val status = connection.responseCode) {
                         200 -> return block(connection)
                         301, 302, 303, 307, 308 -> {

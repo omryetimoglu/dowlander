@@ -19,7 +19,10 @@ class DownloadModel(app: Application) : AndroidViewModel(app) {
     internal val session = DownloadSession(viewModelScope, object : TransferBackend {
         override suspend fun resolve(input: Incoming): MediaPost = when (input) {
             is Incoming.Link -> repo.resolve(input.url)
-            is Incoming.File -> repo.resolveShared(Uri.parse(input.uri), input.mime)
+            is Incoming.Files -> {
+                val posts = input.uris.map { repo.resolveShared(Uri.parse(it), input.mime) }
+                posts.singleOrNull() ?: MediaPost(posts.flatMap { it.items })
+            }
             Incoming.Invalid -> error("Missing input")
         }
         override suspend fun save(item: MediaItem, quality: Quality?, progress: (Long, Long?) -> Unit): String =

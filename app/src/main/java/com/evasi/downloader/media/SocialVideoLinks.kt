@@ -7,14 +7,16 @@ internal object SocialVideoLinks {
     private val youtubeId = Regex("[A-Za-z0-9_-]{11}")
     private val youtubePath = Regex("/(?:shorts|live|embed|v)/([A-Za-z0-9_-]{11})")
     private val instagramPost = Regex("/(?:[A-Za-z0-9_.]+/)?(reel|reels|p|tv)/([A-Za-z0-9_-]+)")
+    private val threadsPost = Regex("/(?:@[A-Za-z0-9_.]+/post|t)/[A-Za-z0-9_-]+")
     private val instagramShare = Regex("/share/(?:reel/|p/)?[A-Za-z0-9_-]+")
-    private val tiktokPost = Regex("/@[A-Za-z0-9_.]+/video/[0-9]+")
+    private val tiktokPost = Regex("/@[A-Za-z0-9_.-]+/(?:video|photo)/[0-9]+")
     private val tiktokLegacy = Regex("/(?:v|share/video)/[0-9]+(?:\\.html)?")
     private val tiktokShort = Regex("/t/[A-Za-z0-9_-]+")
     private val shortCode = Regex("/[A-Za-z0-9_-]+")
     private val facebookVideo = Regex("/(?:reel/[0-9]+|share/[rvp]/[A-Za-z0-9_-]+|[A-Za-z0-9_.-]+/videos/(?:[^/]+/)?[0-9]+)")
     private val facebookPost = Regex("/(?:[A-Za-z0-9_.-]+/posts|groups/[A-Za-z0-9_.-]+/(?:posts|permalink))/(?:[0-9]+|pfbid[A-Za-z0-9]+)")
     private val numericId = Regex("[0-9]+")
+    private val facebookStoryId = Regex("(?:[0-9]+|pfbid[A-Za-z0-9]+)")
 
     fun match(uri: URI): URI? {
         val scheme = uri.scheme?.lowercase()
@@ -38,6 +40,8 @@ internal object SocialVideoLinks {
                     else -> null
                 }
             }
+            "threads.net", "www.threads.net", "threads.com", "www.threads.com" ->
+                if (threadsPost.matches(path)) URI("https://www.threads.com$path") else null
             "tiktok.com", "www.tiktok.com", "m.tiktok.com" -> {
                 when {
                     tiktokShort.matches(path) -> URI("https://www.tiktok.com$path/")
@@ -49,6 +53,13 @@ internal object SocialVideoLinks {
                 if (shortCode.matches(path)) URI("https://${uri.host.lowercase()}$path/") else null
             "facebook.com", "www.facebook.com", "m.facebook.com", "web.facebook.com", "mbasic.facebook.com" ->
                 when {
+                    path in setOf("/photo", "/photo.php") && uri.param("fbid")?.matches(numericId) == true ->
+                        URI("https://www.facebook.com/photo/?fbid=${uri.param("fbid")}")
+                    path == "/permalink.php" || path == "/story.php" -> {
+                        val page = uri.param("id")?.takeIf(numericId::matches) ?: return null
+                        val story = uri.param("story_fbid")?.takeIf(facebookStoryId::matches) ?: return null
+                        URI("https://www.facebook.com$path?story_fbid=$story&id=$page")
+                    }
                     path in setOf("/watch", "/watch/live", "/video.php", "/photo.php") ->
                         uri.param("v")?.takeIf(numericId::matches)?.let { URI("https://www.facebook.com/watch/?v=$it") }
                     facebookVideo.matches(path) || facebookPost.matches(path) -> URI("https://www.facebook.com$path/")

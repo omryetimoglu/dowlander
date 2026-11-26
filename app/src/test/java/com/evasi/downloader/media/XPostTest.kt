@@ -44,6 +44,28 @@ class XPostTest {
         assertTrue(XPost.parse("""{"id_str":"42","text":"text only"}""").items.isEmpty())
     }
 
+    @Test fun photoPermalinkSavesOrderedOriginalsAcrossMixedAlbum() {
+        val request = PostRequest.from("https://x.com/example/status/123/photo/2")
+        val post = request.parse("""{"id_str":"123","mediaDetails":[
+          {"type":"photo","media_url_https":"https://pbs.twimg.com/media/One.png:small","original_info":{"width":4000,"height":3000}},
+          {"type":"video","media_url_https":"https://pbs.twimg.com/media/poster.jpg","video_info":{"variants":[
+            {"content_type":"video/mp4","url":"$high"}]}},
+          {"type":"photo","media_url_https":"https://pbs.twimg.com/media/Two?format=jpg&name=small"}]}""")
+        assertEquals(listOf(MediaKind.PHOTO, MediaKind.VIDEO, MediaKind.PHOTO), post.items.map { it.kind })
+        assertEquals(listOf("https://pbs.twimg.com/media/One?format=png&name=orig", high,
+            "https://pbs.twimg.com/media/Two?format=jpg&name=orig"), post.items.map { it.sources.single().uri })
+        assertEquals(Quality(4000, 3000), post.items.first().sources.single().quality)
+    }
+
+    @Test fun embedPhotoArraySavesEachPhotoAndRejectsNonMediaHosts() {
+        val post = XPost.parse("""{"id_str":"123","photos":[
+          {"url":"https://pbs.twimg.com/media/One.jpg"},{"url":"https://pbs.twimg.com/media/Two.jpg"}]}""")
+        assertEquals(listOf("X-123-1", "X-123-2"), post.items.map { it.sources.single().name })
+        assertEquals(FailureReason.UNSUPPORTED, assertThrows(MediaFailure::class.java) {
+            XPost.parse("""{"id_str":"123","photos":[{"url":"https://pbs.twimg.com.evil.example/media/x.jpg"}]}""")
+        }.reason)
+    }
+
     @Test fun dispatchRecognizesTwitterAliasesAndPreservesMastodon() {
         assertEquals("123", XPost.statusId(URI("https://mobile.twitter.com/i/web/status/123")))
         assertNull(XPost.statusId(URI("https://x.com.example.org/name/status/123")))

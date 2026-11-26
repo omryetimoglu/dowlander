@@ -6,8 +6,11 @@ import java.net.URI
 
 internal object XPost {
     private val hosts = setOf("x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com")
-    private val postPath = Regex("""/(?:[a-zA-Z0-9_]+/status(?:es)?|i/(?:web/)?status)/([0-9]{1,20})(?:/video/[0-9]+)?/?""")
+    private val postPath = Regex("""/(?:[a-zA-Z0-9_]+/status(?:es)?|i/(?:web/)?status)/([0-9]{1,20})(?:/(?:photo|video)/[0-9]+)?/?""")
     private val dimensions = Regex("""/([1-9][0-9]{0,4})x([1-9][0-9]{0,4})/""")
+
+    private val imagePath = Regex("""/media/([A-Za-z0-9_-]+)(?:\.([A-Za-z0-9]+))?(?::[A-Za-z0-9_]+)?""")
+    private val formats = setOf("jpg", "jpeg", "png", "webp")
 
     fun statusId(uri: URI): String? {
         if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host?.lowercase() !in hosts ||
@@ -22,31 +25,61 @@ internal object XPost {
         if (tweet.isNull("id_str") || tweet.optString("__typename") == "TweetTombstone") {
             throw MediaFailure(FailureReason.UNAVAILABLE)
         }
-        return MediaPost(videoItems(tweet), tweet.optJSONObject("user")?.optString("name").orEmpty().take(100))
+        return MediaPost(mediaItems(tweet), tweet.optJSONObject("user")?.optString("name").orEmpty().take(100))
     }
 
-    private fun videoItems(tweet: JSONObject): List<MediaItem> {
+    private fun mediaItems(tweet: JSONObject): List<MediaItem> {
         val id = tweet.getString("id_str")
         val details = tweet.optJSONArray("mediaDetails")
         val items = mutableListOf<MediaItem>()
         if (details != null) {
             for (index in 0 until details.length()) {
                 val detail = details.optJSONObject(index) ?: continue
+                val name = "X-$id-${index + 1}"
+                if (detail.optString("type") == "photo") {
+                    items += photoItem(detail.optString("media_url_https"), detail.optJSONObject("original_info"), name)
+                    continue
+                }
                 val kind = when (detail.optString("type")) {
                     "video" -> MediaKind.VIDEO
                     "animated_gif" -> MediaKind.GIF
                     else -> continue
                 }
                 val variants = detail.optJSONObject("video_info")?.optJSONArray("variants")
-                items += videoItem(kind, variants, "X-$id-${index + 1}", "url", "content_type")
+                items += videoItem(kind, variants, name, "url", "content_type")
             }
         }
         if (items.isEmpty()) {
             // Some embeds expose only video.variants, with src/type instead of url/content_type.
-            val video = tweet.optJSONObject("video") ?: return emptyList()
-            items += videoItem(MediaKind.VIDEO, video.optJSONArray("variants"), "X-$id-1", "src", "type")
+            val video = tweet.optJSONObject("video")
+            if (video != null) {
+                items += videoItem(MediaKind.VIDEO, video.optJSONArray("variants"), "X-$id-1", "src", "type")
+            } else {
+                val photos = tweet.optJSONArray("photos") ?: return emptyList()
+                for (index in 0 until photos.length()) {
+                    val photo = photos.getJSONObject(index)
+                    items += photoItem(photo.optString("url"), photo, "X-$id-${index + 1}")
+                }
+            }
         }
         return items
+    }
+
+    private fun photoItem(url: String, metadata: JSONObject?, name: String): MediaItem {
+        val uri = runCatching { URI(url) }.getOrNull() ?: throw MediaFailure(FailureReason.UNSUPPORTED)
+        if (!uri.scheme.equals("https", true) || !uri.host.equals("pbs.twimg.com", true) ||
+            uri.rawUserInfo != null || uri.port != -1) throw MediaFailure(FailureReason.UNSUPPORTED)
+        val path = imagePath.matchEntire(uri.rawPath.orEmpty()) ?: throw MediaFailure(FailureReason.UNSUPPORTED)
+        val format = path.groupValues[2].ifEmpty {
+            uri.rawQuery.orEmpty().split('&').firstOrNull { it.startsWith("format=") }?.substringAfter('=').orEmpty()
+        }.lowercase()
+        if (format.isNotEmpty() && format !in formats) throw MediaFailure(FailureReason.UNSUPPORTED)
+        val query = if (format.isEmpty()) "name=orig" else "format=$format&name=orig"
+        val original = "https://pbs.twimg.com/media/${path.groupValues[1]}?$query"
+        val width = metadata?.optInt("width") ?: 0
+        val height = metadata?.optInt("height") ?: 0
+        val size = if (width > 0 && height > 0) Quality(width, height) else null
+        return MediaItem(MediaKind.PHOTO, listOf(MediaSource(original, quality = size, name = name)))
     }
 
     private fun videoItem(kind: MediaKind, variants: JSONArray?, name: String, urlKey: String, typeKey: String): MediaItem {

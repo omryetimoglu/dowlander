@@ -37,6 +37,7 @@
         <item quantity="one">%d öğe kaydedildi</item>
         <item quantity="other">%d öğe kaydedildi</item>
     </plurals>
+    <string name="album_count">Albümde %1$d öğe</string>
     <string name="item_progress">%2$d öğeden %1$d. öğe</string>
     <string name="percentage">%%%1$d</string>
     <string name="open_gallery">Galeride aç</string>

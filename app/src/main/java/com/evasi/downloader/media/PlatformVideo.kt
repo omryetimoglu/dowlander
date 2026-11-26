@@ -6,6 +6,7 @@ import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -19,7 +20,7 @@ import java.nio.file.StandardCopyOption
 /** yt-dlp manages signed URLs, request headers, segmented downloads and audio/video merging. */
 internal class PlatformVideo(private val app: Context) {
     suspend fun resolve(link: String): MediaPost {
-        val request = PlatformVideoRequest.forLink(link).addOption("--dump-json")
+        val request = PlatformVideoRequest.metadata(link)
         val metadata = execute(request)
         return try {
             PlatformVideoRequest.parse(metadata, link)
@@ -39,7 +40,7 @@ internal class PlatformVideo(private val app: Context) {
             throw MediaFailure(FailureReason.STORAGE, error)
         }
         try {
-            val request = PlatformVideoRequest.forLink(source.uri, source.quality)
+            val request = PlatformVideoRequest.download(source)
                 .addOption("-o", File(temp, "video.%(ext)s").absolutePath)
                 .addOption("--newline")
                 .addOption("--progress-template", "download:bytes %(progress.downloaded_bytes)s %(progress.total_bytes,progress.total_bytes_estimate)s")
@@ -106,39 +107,93 @@ internal class PlatformVideo(private val app: Context) {
 }
 
 internal object PlatformVideoRequest {
-    fun forLink(link: String, quality: Quality? = null): YoutubeDLRequest {
-        val size = quality?.let { "[width=${it.width}][height=${it.height}]" }.orEmpty()
-        // Prefer MP4, with audio whenever present. bv is the final fallback for genuinely silent videos.
-        val format = "bv*$size[ext=mp4]+ba[ext=m4a]/b$size[ext=mp4]/bv*$size+ba/b$size/bv$size"
-        return YoutubeDLRequest(link)
-            .addOption("--ignore-config")
-            .addOption("--no-playlist")
-            .addOption("--playlist-items", "1")
-            .addOption("--match-filters", "!is_live")
-            .addOption("--socket-timeout", "20")
+    private val imageTypes = mapOf(
+        "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "png" to "image/png", "webp" to "image/webp",
+        "gif" to "image/gif", "avif" to "image/avif", "heic" to "image/heic",
+    )
+    private val formatId = Regex("[A-Za-z0-9_.-]+")
+
+    private fun request(link: String): YoutubeDLRequest = YoutubeDLRequest(link)
+        .addOption("--ignore-config")
+        .addOption("--match-filters", "!is_live")
+        .addOption("--socket-timeout", "20")
+
+    fun metadata(link: String): YoutubeDLRequest {
+        val request = request(link).addOption("--dump-single-json").addOption("--ignore-no-formats-error")
+        if (SocialVideoLinks.match(URI(link))?.host == "www.youtube.com") {
+            request.addOption("--no-playlist").addOption("--playlist-items", "1")
+        }
+        return request
+    }
+
+    fun download(source: MediaSource): YoutubeDLRequest {
+        val size = source.quality?.let { "[width=${it.width}][height=${it.height}]" }.orEmpty()
+        // Image-only formats can have both codecs set to "none". Select their exact ID.
+        val format = source.platformImageFormat?.let { id ->
+            require(formatId.matches(id))
+            id
+        } ?: "bv*$size[ext=mp4]+ba[ext=m4a]/b$size[ext=mp4]/bv*$size+ba/b$size/bv$size"
+        val result = request(source.uri)
+            .addOption("--playlist-items", source.playlistIndex ?: 1)
             .addOption("-f", format)
+        if (source.playlistIndex == null) result.addOption("--no-playlist")
+        return result
     }
 
     fun parse(output: String, link: String): MediaPost {
         if (output.isBlank()) throw MediaFailure(FailureReason.UNAVAILABLE)
-        val video = JSONObject(output)
-        if (video.optBoolean("is_live")) throw MediaFailure(FailureReason.UNSUPPORTED)
-        val formats = video.optJSONArray("formats") ?: throw MediaFailure(FailureReason.UNSUPPORTED)
-        val sizes = linkedSetOf<Quality>()
-        var playable = false
-        for (index in 0 until formats.length()) {
-            val format = formats.optJSONObject(index) ?: continue
-            if (format.optBoolean("has_drm") || format.optString("vcodec") == "none" ||
-                format.optString("ext") in setOf("mhtml", "vtt")) continue
-            playable = true
-            val width = format.optInt("width")
-            val height = format.optInt("height")
-            if (width > 0 && height > 0) sizes += Quality(width, height)
+        val post = JSONObject(output)
+        val entries = post.optJSONArray("entries")
+        val items = if (entries == null) listOfNotNull(parseItem(post, link, null)) else {
+            // An album with a missing attachment must not be reported as fully saved.
+            (0 until entries.length()).map { position ->
+                val entry = entries.optJSONObject(position) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
+                val index = entry.optInt("playlist_index").takeIf { it > 0 } ?: (position + 1)
+                parseItem(entry, link, index) ?: throw MediaFailure(FailureReason.UNAVAILABLE)
+            }
         }
-        if (!playable) throw MediaFailure(FailureReason.UNSUPPORTED)
-        val title = video.optString("title").take(120)
-        val automatic = MediaSource(link, name = title.ifBlank { "Video" } + ".mp4", platformVideo = true)
-        return MediaPost(listOf(MediaItem(MediaKind.VIDEO, listOf(automatic) + sizes.map { automatic.copy(quality = it) })), title)
+        if (items.isEmpty()) throw MediaFailure(FailureReason.UNSUPPORTED)
+        return MediaPost(items, post.optString("title").take(120))
+    }
+
+    private fun parseItem(entry: JSONObject, link: String, index: Int?): MediaItem? {
+        if (entry.optBoolean("is_live") || entry.optBoolean("has_drm")) return null
+        val array = entry.optJSONArray("formats")
+        val formats = if (array == null || array.length() == 0) listOf(entry).filter { !it.isNull("url") }
+            else (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+
+        val downloadable = formats.filterNot {
+            it.optBoolean("has_drm") || it.optString("ext") in setOf("mhtml", "vtt") ||
+                it.optString("format_note").contains("storyboard", ignoreCase = true)
+        }
+        val videos = downloadable.filter { imageType(it) == null && it.optString("vcodec") != "none" }
+        val title = entry.optString("title").take(120).ifBlank { "Media" }
+        val name = if (index == null) title else "$index-$title"
+        val source = MediaSource(link, name = "$name.mp4", platformVideo = true, playlistIndex = index)
+        if (videos.isNotEmpty()) {
+            val sizes = videos.mapNotNull(::quality).distinct()
+            return MediaItem(MediaKind.VIDEO, listOf(source) + sizes.map { source.copy(quality = it) })
+        }
+
+        // Never use thumbnail/thumbnails. Photos must be independently downloadable payloads.
+        val photos = downloadable.mapNotNull { format ->
+            val mime = imageType(format) ?: return@mapNotNull null
+            val uri = runCatching { URI(format.optString("url")) }.getOrNull() ?: return@mapNotNull null
+            if (uri.host == null || uri.scheme !in setOf("http", "https")) return@mapNotNull null
+            val id = format.optString("format_id").takeIf(formatId::matches) ?: return@mapNotNull null
+            source.copy(mime = mime, quality = quality(format), name = "$name.${mime.substringAfter('/')}",
+                platformImageFormat = id)
+        }.sortedByDescending { it.quality?.let { q -> q.width.toLong() * q.height } ?: 0L }
+        val original = photos.firstOrNull() ?: return null
+        return MediaItem(if (original.mime == "image/gif") MediaKind.GIF else MediaKind.PHOTO, photos)
+    }
+
+    private fun imageType(format: JSONObject): String? = imageTypes[format.optString("ext").lowercase()]
+
+    private fun quality(format: JSONObject): Quality? {
+        val w = format.optInt("width")
+        val h = format.optInt("height")
+        return if (w > 0 && h > 0) Quality(w, h) else null
     }
 
     fun failure(message: String): FailureReason = when {

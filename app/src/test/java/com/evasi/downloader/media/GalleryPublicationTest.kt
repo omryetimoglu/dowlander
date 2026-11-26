@@ -74,6 +74,32 @@ class GalleryPublicationTest {
         assertArrayEquals(gif, media.output.readBytes())
     }
 
+    @Test fun multipleSharedPhotosCopiedOnceInSenderOrder() {
+        val first = gifWithComment(1)
+        val second = gifWithComment(2)
+        media.source.writeBytes(first)
+        media.secondSource.writeBytes(second)
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).setType("image/gif")
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(media.secondUri, media.sourceUri))
+        intent.clipData = ClipData.newRawUri("images", media.secondUri).apply { addItem(ClipData.Item(media.sourceUri)) }
+        val controller = Robolectric.buildActivity(MainActivity::class.java, intent).create().start().resume()
+        try {
+            val activity = controller.get()
+            val session = ViewModelProvider(activity)[DownloadModel::class.java].session
+            for (attempt in 1..1500) {
+                if (session.state.value.phase in setOf(Phase.Saved, Phase.Failed)) break
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(10)
+            }
+            assertEquals(Phase.Saved, session.state.value.phase)
+            assertEquals(2, session.state.value.savedCount)
+            assertArrayEquals(second, File(temp.root, "row-1").readBytes())
+            assertArrayEquals(first, File(temp.root, "row-2").readBytes())
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
     @Test fun truncatedInputDeletesItsPendingRow() = runBlocking {
         val gif = gifWithComment(1)
         media.source.writeBytes(gif)
@@ -171,6 +197,14 @@ class GalleryPublicationTest {
     private class FileMediaProvider(val folder: File) : ContentProvider() {
         val source = File(folder, "original.gif")
         val sourceUri: Uri = Uri.parse("content://media/test/source")
+        val secondSource = File(folder, "second.gif")
+        val secondUri: Uri = Uri.parse("content://media/test/second")
+        private fun sourceFor(uri: Uri) = when (uri) {
+            sourceUri -> source
+            secondUri -> secondSource
+            else -> null
+        }
+
         lateinit var output: File
         lateinit var lastInserted: Uri
         lateinit var values: ContentValues
@@ -179,15 +213,15 @@ class GalleryPublicationTest {
         val events = mutableListOf<String>()
         private var nextId = 0L
         override fun onCreate() = true
-        override fun getType(uri: Uri) = if (uri == sourceUri) "image/gif" else values.getAsString(MediaColumns.MIME_TYPE)
+        override fun getType(uri: Uri) = if (sourceFor(uri) != null) "image/gif" else values.getAsString(MediaColumns.MIME_TYPE)
 
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
             selectionArgs: Array<out String>?, sortOrder: String?): MatrixCursor {
             val columns = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
             return MatrixCursor(columns).apply {
                 addRow(columns.map { column -> when (column) {
-                    OpenableColumns.DISPLAY_NAME -> source.name
-                    OpenableColumns.SIZE -> declaredSize ?: source.length()
+                    OpenableColumns.DISPLAY_NAME -> sourceFor(uri)?.name
+                    OpenableColumns.SIZE -> declaredSize ?: sourceFor(uri)?.length()
                     MediaColumns.IS_PENDING -> values.getAsInteger(MediaColumns.IS_PENDING)
                     else -> null
                 } })
@@ -195,7 +229,7 @@ class GalleryPublicationTest {
         }
 
         override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-            val file = if (uri == sourceUri) source else output.also {
+            val file = sourceFor(uri) ?: output.also {
                 if (mode.contains('w')) {
                     check(values.getAsInteger(MediaColumns.IS_PENDING) == 1)
                     events.add("write")

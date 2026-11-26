@@ -37,6 +37,7 @@
         <item quantity="one">%d item saved</item>
         <item quantity="other">%d items saved</item>
     </plurals>
+    <string name="album_count">%1$d items in this album</string>
     <string name="item_progress">Item %1$d of %2$d</string>
     <string name="percentage">%1$d%%</string>
     <string name="open_gallery">Open in gallery</string>

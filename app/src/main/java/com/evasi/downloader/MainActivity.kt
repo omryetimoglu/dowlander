@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun receive(incoming: Intent) {
-        shareForeground = incoming.action == Intent.ACTION_SEND
+        shareForeground = incoming.action == Intent.ACTION_SEND || incoming.action == Intent.ACTION_SEND_MULTIPLE
         if (!shareForeground) return
         model.prefs.markShared(System.currentTimeMillis())
         val value = runCatching { sharedInput(incoming) }.getOrDefault(Incoming.Invalid)
@@ -67,11 +67,19 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     private fun sharedInput(intent: Intent): Incoming {
         val payload = intent.clipData
-        val stream = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        val multiple = intent.action == Intent.ACTION_SEND_MULTIPLE
+        val streams = if (multiple) {
+            if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+            else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+        } else {
+            val stream = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            listOfNotNull(stream)
+        }
         val clipItems = (0 until (payload?.itemCount ?: 0)).map { payload!!.getItemAt(it) }
-        val uri = (listOf(stream, intent.data) + clipItems.map { it.uri }).firstOrNull { it?.scheme == "content" }
-        if (uri != null) return Incoming.File(uri.toString(), intent.type)
+        val uris = (streams + listOfNotNull(intent.data) + clipItems.mapNotNull { it.uri })
+            .filter { it.scheme == "content" }.distinct().map { it.toString() }
+        if (uris.isNotEmpty()) return Incoming.Files(if (multiple) uris else uris.take(1), intent.type)
         val texts = listOf(intent.getCharSequenceExtra(Intent.EXTRA_TEXT), intent.dataString) +
             clipItems.flatMap { listOf(it.text, it.uri?.toString()) } + intent.getStringExtra(Intent.EXTRA_SUBJECT)
         val link = SharedLinks.extract(texts.filterNotNull().joinToString(" "))

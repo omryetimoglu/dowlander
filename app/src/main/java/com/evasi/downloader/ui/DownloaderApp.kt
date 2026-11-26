@@ -219,6 +219,8 @@ private fun SourceCard(state: ScreenState) {
                     color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (state.title.isNotBlank() && state.title != url) Text(state.title, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                if (state.phase == Phase.Ready && state.total > 1)
+                    Text(stringResource(R.string.album_count, state.total), color = Ink, fontSize = 14.sp)
                 if (url != null) Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Muted,
                     fontSize = 14.sp, lineHeight = 19.sp)
             }
