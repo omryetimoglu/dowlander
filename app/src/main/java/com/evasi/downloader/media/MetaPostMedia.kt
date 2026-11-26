@@ -40,12 +40,9 @@ internal object MetaPostMedia {
         val sources = mutableListOf<MediaSource>()
         fun add(url: String, w: Int, h: Int) {
             val uri = runCatching { URI(url) }.getOrNull() ?: return
-            val host = uri.host?.lowercase() ?: return
-            if (uri.scheme != "https" || uri.rawUserInfo != null || uri.port != -1 ||
-                !(host == "cdninstagram.com" || host.endsWith(".cdninstagram.com") ||
-                    host == "fbcdn.net" || host.endsWith(".fbcdn.net"))) return
+            if (!MediaCdn.META.accepts(uri)) return
             val size = if (w > 0 && h > 0) Quality(w, h) else null
-            sources += MediaSource(url, quality = size, name = name, referer = referer)
+            sources += MediaSource(url, quality = size, name = name, referer = referer, deliveryCdn = MediaCdn.META)
         }
 
         val variants = if (kind == MediaKind.PHOTO) node.optJSONObject("image_versions2")?.optJSONArray("candidates")

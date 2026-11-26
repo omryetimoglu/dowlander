@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The launcher tints the opaque artwork; the film slots and screen are transparent. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M30,46 Q30,40 36,38.5 L68,31.5 Q74,30 76,35 L77.5,38.5 Q78,40 78,43 V60 Q78,67 71,67 H37 Q30,67 30,60 Z
+            M33.5,50.5 Q33.5,47.8 36.5,47.1 L71.8,39.5 Q74.5,38.9 74.5,42 V59.5 Q74.5,63.5 70.5,63.5 H37.5 Q33.5,63.5 33.5,59.5 Z
+            M34,42.5 L36.9,40.6 L41.7,44.7 L37.8,45.5 Z
+            M44.5,38.8 L49.1,37.8 L53.9,42 L49.3,43 Z
+            M57.9,35.8 L62.5,34.8 L67.3,39.1 L62.7,40.1 Z" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M49.9,48.4 Q49.9,46.7 51.4,47.6 L60.2,52.6 Q61.7,53.5 60.2,54.4 L51.4,59.4 Q49.9,60.3 49.9,58.6 Z
+            M51.3,61 H56.7 V69 H60.4 Q61.2,69 60.6,69.7 L54.8,76 Q54,76.9 53.2,76 L47.4,69.7 Q46.8,69 47.6,69 H51.3 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M41.2,73.8 V76.7 Q41.2,80 44.7,80 H63.3 Q66.8,80 66.8,76.7 V73.8" />
+</vector>

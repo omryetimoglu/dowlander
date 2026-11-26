@@ -1,18 +1,20 @@
-# eVasi Dowlander App
+# eVasi Downloader App
+
+<img src="app/src/main/res/drawable-xxxhdpi/brand_logo.webp" width="96" alt="eVasi Downloader App logosu">
 
 Android 10 ve üzeri için Kotlin ve Jetpack Compose ile geliştirilmiş bir galeriye kaydetme uygulaması.
 
-[Android 10 ve üzeri için 1.2 evrensel APK’yı indir (226 MB)](https://github.com/omryetimoglu/dowlander/raw/refs/heads/main/apk/app-debug.apk)
+[Android 10 ve üzeri için 1.2.1 evrensel APK’yı indir (226 MB)](apk/eVasiApp.apk?raw=true)
 
-Bu test APK’sı ARM64, ARMv7, x86 ve x86_64 cihazları destekler. Önceki **Evasi X Test** ve GitHub 1.1 kurulumlarını yerinde günceller. **Evasi Video Dowlander 1.0** farklı paket kimliği ve imza kullandığı için yeni sürüm onun yanına ayrı bir uygulama olarak kurulur.
+Bu test APK’sı ARM64, ARMv7, x86 ve x86_64 cihazları destekler. **Evasi X Test** ve önceki GitHub test sürümlerinin üzerine kurulabilir. İlk sürüm (1.0) farklı paket kimliği ve imza kullandığı için yeni sürüm onun yanına ayrı bir uygulama olarak kurulur.
 
-APK’nın SHA-256 özeti: `7d2af147d549b6eb933ff74a51bb80b76a2bf758d324cee74d8b18de442c36da`. Depoyu klonladığınızda APK’yı indirmek için `git lfs pull` çalıştırabilirsiniz.
+APK’nın SHA-256 özeti: `3cdf6179c2b46ef383fe1a986067ffa71188876ff99641857d826e9a12ab207f`. Depoyu klonladığınızda APK’yı indirmek için `git lfs pull` çalıştırabilirsiniz.
 
 ## Kullanım
 
-1. Instagram, Facebook, Threads, TikTok, YouTube, X veya Mastodon’dan bir gönderi bağlantısı kopyalayıp uygulamayı açın. Bağlantıyı elle okumak için **Bağlantıyı yapıştır** düğmesini kullanın. Kaynak uygulamanın **Paylaş → eVasi Dowlander App** seçeneği indirmeyi doğrudan başlatır.
-2. Pano akışında **Piksel seç** ile sunulan boyutlardan birini seçebilir veya **İndirmeyi başlat** düğmesine dokunabilirsiniz. Otomatik başlatma açıksa iki düğme göründükten 1,5 saniye sonra indirme başlar. Kalite seçimine dokunmak bu gönderinin sayacını durdurur.
-3. İndirme tamamlandığında **Galeride aç** düğmesine dokunun. Yeni videolar `Movies/eVasi Dowlander App`, fotoğraflar `Pictures/eVasi Dowlander App` albümüne kaydedilir.
+1. Instagram, Facebook, Threads, TikTok, YouTube, X veya Mastodon’dan bir gönderi bağlantısı kopyalayıp uygulamayı açın. Bağlantıyı elle okumak için **Bağlantıyı yapıştır** düğmesini kullanın. Kaynak uygulamanın **Paylaş → eVasi Downloader App** seçeneği indirmeyi doğrudan başlatır.
+2. Pano akışında **Piksel seç** ile sunulan boyutlardan birini seçebilir veya **İndirmeyi başlat** düğmesine dokunabilirsiniz. Otomatik başlatma açıksa iki düğme görünürken varsayılan bekleme süresi 1,5 saniyedir. Kalite seçimine dokunmak bu gönderinin sayacını durdurur. Bu kaynak revizyonundan derlenen uygulama, Android erişilebilirlik ayarında seçtiğiniz daha uzun süreyi bekler. Hassas olarak işaretlenen pano bağlantılarını **Bağlantıyı yapıştır** düğmesiyle açabilirsiniz.
+3. İndirme tamamlandığında **Galeride aç** düğmesine dokunun. Yeni videolar `Movies/eVasi Downloader App`, fotoğraflar `Pictures/eVasi Downloader App` albümüne kaydedilir.
 
 **Settings → Language → Türkçe** ile dili seçebilirsiniz. Pano için otomatik başlatma ayarı da aynı ekrandadır.
 
@@ -36,7 +38,9 @@ X için otomatik seçim en yüksek bit hızlı MP4’ü kullanır. Mastodon içi
 
 ## Derleme ve çalıştırma
 
-Proje Android SDK Platform 35 ve Gradle wrapper kullanır. Java hedefi 17’dir. Android Studio ile proje kökünü açabilir veya PowerShell üzerinden çalıştırabilirsiniz. SDK konumunu `ANDROID_HOME` ile ya da Android Studio’nun oluşturduğu `local.properties` ile belirtin.
+GitHub’dan **Code → Download ZIP** ile indirdiyseniz ZIP’i yeni bir klasöre çıkarın. Android Studio’da **File → Open** ile içinde `settings.gradle.kts` dosyasını gördüğünüz klasörü seçin. Gradle eşitlemesi bitince üst çubukta **app** ve emülatörünüzü seçip **▶ Run** düğmesine basın.
+
+Proje Android SDK Platform 35 ve Gradle wrapper kullanır. Java hedefi 17’dir. PowerShell ile çalıştırmak için proje kökünü açın. SDK konumunu `ANDROID_HOME` ile ya da Android Studio’nun oluşturduğu `local.properties` ile belirtebilirsiniz.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
@@ -46,7 +50,7 @@ adb shell am start -n com.evasi.downloader/.MainActivity
 
 GitHub’daki test sürümüyle aynı paket kimliğini kullanmak için derleme komutuna `-PgithubApk` ekleyin. Mevcut kurulumu güncellemek için aynı imzalama anahtarını kullanın.
 
-Debug APK çıktısı `app/build/outputs/apk/debug/app-debug.apk` olur. Kurulum için USB hata ayıklaması açık bir telefon veya çalışan bir Android emülatörü gerekir.
+Debug APK çıktısı `app/build/outputs/apk/debug/eVasiApp.apk` olur. Kurulum için USB hata ayıklaması açık bir telefon veya çalışan bir Android emülatörü gerekir.
 
 Linux ve macOS üzerinde proje kökünde `./gradlew :app:testDebugUnitTest :app:assembleDebug` komutunu kullanın. APK, video çözümleme ve ses birleştirme araçlarını içerir.
 

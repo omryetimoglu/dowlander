@@ -24,6 +24,8 @@ data class ScreenState(
     val autoStart: Boolean = true,
 )
 
+internal const val DEFAULT_AUTO_START_MS = 1500L
+
 sealed interface UiEvent {
     object Paste : UiEvent
     object QualityTouched : UiEvent
@@ -34,7 +36,7 @@ sealed interface UiEvent {
     object Retry : UiEvent
     object OpenGallery : UiEvent
     object NotificationSettings : UiEvent
-    data class ControlsReady(val generation: Long) : UiEvent
+    data class ControlsReady(val generation: Long, val timeoutMillis: Long = DEFAULT_AUTO_START_MS) : UiEvent
     data class ControlsHidden(val generation: Long) : UiEvent
     data class SelectQuality(val value: String) : UiEvent
     data class SetLanguage(val tag: String) : UiEvent

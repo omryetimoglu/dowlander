@@ -16,6 +16,7 @@ data class MediaSource(
     val referer: String? = null,
     val playlistIndex: Int? = null,
     val platformImageFormat: String? = null,
+    val deliveryCdn: MediaCdn? = null,
 )
 
 data class MediaItem(val kind: MediaKind, val sources: List<MediaSource>)

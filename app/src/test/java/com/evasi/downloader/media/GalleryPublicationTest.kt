@@ -22,8 +22,11 @@ import com.evasi.downloader.MainActivity
 import com.evasi.downloader.Preferences
 import com.evasi.downloader.ui.Phase
 import com.evasi.downloader.ui.Source
+import com.evasi.downloader.viewMedia
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import java.time.Duration
 import kotlinx.coroutines.cancel
@@ -68,10 +71,15 @@ class GalleryPublicationTest {
         val output = repo.save(item, null) { _, _ -> }
         assertEquals(media.lastInserted, output)
         assertEquals("image/gif", media.values.getAsString(MediaColumns.MIME_TYPE))
-        assertEquals("Pictures/eVasi Dowlander App/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
+        assertEquals("Pictures/eVasi Downloader App/", media.values.getAsString(MediaColumns.RELATIVE_PATH))
         assertTrue(output.path.orEmpty().contains("/images/media/"))
         assertEquals(listOf("pending", "write", "publish"), media.events)
         assertArrayEquals(gif, media.output.readBytes())
+        val viewer = requireNotNull(viewMedia(ApplicationProvider.getApplicationContext(), output))
+        assertEquals(Intent.ACTION_VIEW, viewer.action)
+        assertEquals(output, viewer.data)
+        assertEquals("image/gif", viewer.type)
+        assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, viewer.flags)
     }
 
     @Test fun multipleSharedPhotosCopiedOnceInSenderOrder() {
@@ -114,6 +122,112 @@ class GalleryPublicationTest {
         assertEquals(listOf("pending", "write", "delete"), media.events)
         assertFalse(media.output.exists())
     }
+
+    @Test fun oversizeInputIsRejectedBeforeExcessBytesReachThePendingRow() = runBlocking {
+        media.source.writeBytes(gifWithComment(700))
+        media.declaredSize = 5L
+        val item = repo.resolveShared(media.sourceUri, "image/gif").items.single()
+        try {
+            repo.save(item, null) { _, _ -> }
+            fail("Expected oversized provider stream to fail")
+        } catch (failure: MediaFailure) {
+            assertEquals(FailureReason.INVALID, failure.reason)
+        }
+        assertEquals(0L, media.deletedLength)
+        assertFalse(media.output.exists())
+    }
+
+    @Test fun sourceReadErrorDuringSignatureCheckDoesNotInsertARow() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val input = object : InputStream() {
+            override fun read(): Int = throw IOException("test read failure")
+        }
+        val failure = assertThrows(MediaFailure::class.java) {
+            GalleryStore(app).write(input, null, null, null, FailureReason.NETWORK, null,
+                kotlinx.coroutines.Job(), { fail("Unexpected insert") }, { _, _ -> })
+        }
+        assertEquals(FailureReason.NETWORK, failure.reason)
+        assertTrue(media.events.isEmpty())
+    }
+
+    @Test fun interruptedRecoveryRetriesWithoutDeletingActiveOrPublishedRows() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val journal = app.getSharedPreferences("gallery_pending", Context.MODE_PRIVATE)
+        val state = GalleryStore.Recovery()
+        val first = GalleryStore(app, state)
+        val otherInstance = GalleryStore(app, state)
+        val row = media.insert(imageCollection, ContentValues().apply { put(MediaColumns.IS_PENDING, 1) })
+        journal.edit().putBoolean(row.toString(), true).commit()
+
+        media.refuseDelete = true
+        first.recover()
+        assertTrue(journal.contains(row.toString()))
+        assertTrue(media.output.exists())
+
+        val live = ContentUris.withAppendedId(imageCollection, 99)
+        journal.edit().putBoolean(live.toString(), true).commit()
+        media.refuseDelete = false
+        otherInstance.recover()
+        assertTrue("Avoid retrying immediately on every save", media.output.exists())
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(6))
+        otherInstance.recover()
+        assertFalse(media.output.exists())
+        assertFalse(journal.contains(row.toString()))
+        assertTrue("New writes do not belong to startup recovery", journal.contains(live.toString()))
+
+        // The next process sees an already published row and an already deleted row.
+        val published = media.insert(imageCollection, ContentValues().apply { put(MediaColumns.IS_PENDING, 1) })
+        media.output.writeBytes(byteArrayOf(1))
+        media.update(published, ContentValues().apply { put(MediaColumns.IS_PENDING, 0) }, null, null)
+        journal.edit().putBoolean(published.toString(), true).commit()
+        GalleryStore(app, GalleryStore.Recovery()).recover()
+        assertTrue(media.output.exists())
+        assertFalse(journal.contains(live.toString()))
+        assertFalse(journal.contains(published.toString()))
+    }
+
+    @Test fun coldStartRecoversAllJournalRowsEvenIfOneDeleteFails() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val journal = app.getSharedPreferences("gallery_pending", Context.MODE_PRIVATE)
+        val store = GalleryStore(app, GalleryStore.Recovery())
+        val pendingRow = media.insert(imageCollection, ContentValues().apply { put(MediaColumns.IS_PENDING, 1) })
+        val editor = journal.edit().putBoolean(pendingRow.toString(), true)
+        for (id in 2L..42L) {
+            editor.putBoolean(ContentUris.withAppendedId(imageCollection, id).toString(), true)
+        }
+        editor.commit()
+
+        media.refuseDelete = true
+        store.recover()
+        assertEquals(setOf(pendingRow.toString()), journal.all.keys)
+        assertTrue(media.output.exists())
+
+        val active = ContentUris.withAppendedId(imageCollection, 43).toString()
+        journal.edit().putBoolean(active, true).commit()
+        media.refuseDelete = false
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(6))
+        store.recover()
+        assertEquals(setOf(active), journal.all.keys)
+        assertFalse(media.output.exists())
+    }
+
+    @Test fun unclaimedPublicationWhoseRollbackFailedIsDeletedOnRestart() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val journal = app.getSharedPreferences("gallery_pending", Context.MODE_PRIVATE)
+        val row = media.insert(imageCollection, ContentValues().apply { put(MediaColumns.IS_PENDING, 1) })
+        media.output.writeBytes(byteArrayOf(1))
+        media.update(row, ContentValues().apply { put(MediaColumns.IS_PENDING, 0) }, null, null)
+
+        media.refuseDelete = true
+        GalleryStore(app).discard(row)
+        assertTrue(journal.contains(row.toString()))
+        media.refuseDelete = false
+        GalleryStore(app, GalleryStore.Recovery()).recover()
+        assertFalse(journal.contains(row.toString()))
+        assertFalse(media.output.exists())
+    }
+
+    private val imageCollection = Uri.parse("content://media/external_primary/images/media")
 
     @Test fun cancellationAfterFirstChunkDeletesThePartialFile() = runBlocking {
         val gif = gifWithComment(700)
@@ -209,6 +323,7 @@ class GalleryPublicationTest {
         lateinit var lastInserted: Uri
         lateinit var values: ContentValues
         var declaredSize: Long? = null
+        var refuseDelete = false
         var deletedLength = 0L
         val events = mutableListOf<String>()
         private var nextId = 0L
@@ -219,6 +334,9 @@ class GalleryPublicationTest {
             selectionArgs: Array<out String>?, sortOrder: String?): MatrixCursor {
             val columns = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
             return MatrixCursor(columns).apply {
+                if (sourceFor(uri) == null && (!::lastInserted.isInitialized || uri != lastInserted || !output.exists())) {
+                    return@apply
+                }
                 addRow(columns.map { column -> when (column) {
                     OpenableColumns.DISPLAY_NAME -> sourceFor(uri)?.name
                     OpenableColumns.SIZE -> declaredSize ?: sourceFor(uri)?.length()
@@ -256,6 +374,7 @@ class GalleryPublicationTest {
         }
 
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+            if (refuseDelete) return 0
             check(uri == lastInserted)
             deletedLength = output.length()
             check(output.delete())

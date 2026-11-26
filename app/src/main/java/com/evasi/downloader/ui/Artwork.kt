@@ -21,12 +21,11 @@ internal val Paper = Color(0xFFF8F9F5)
 internal val Line = Color(0xFFD4DFD7)
 internal val Mint = Color(0xFFE2F2E8)
 
-internal enum class Mark { Logo, Check, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
+internal enum class Mark { Check, Settings, Back, Chevron, Clipboard, Sliders, Download, Gallery, Close, Repeat, Globe, Bell, Link, Share }
 
-private fun line(vararg coordinates: Float, closed: Boolean = false): Path = Path().apply {
+private fun line(vararg coordinates: Float): Path = Path().apply {
     moveTo(coordinates[0], coordinates[1])
     for (i in 2 until coordinates.size step 2) lineTo(coordinates[i], coordinates[i + 1])
-    if (closed) close()
 }
 
 @Composable
@@ -39,11 +38,6 @@ internal fun Glyph(mark: Mark, color: Color, modifier: Modifier) {
         )
         scale(size.width / 24f, size.height / 24f, Offset.Zero) {
             when (mark) {
-                Mark.Logo -> {
-                    drawPath(line(2f, 2f, 22f, 2f, 19f, 6f, 5f, 6f, closed = true), color)
-                    drawPath(line(6f, 9f, 18f, 9f, 12f, 17f, closed = true), color)
-                    path(2f, 16f, 2f, 22f, 22f, 22f, 22f, 16f)
-                }
                 Mark.Check -> path(4.5f, 12f, 10f, 17.5f, 20f, 7f)
                 Mark.Download -> {
                     path(12f, 3f, 12f, 14f)

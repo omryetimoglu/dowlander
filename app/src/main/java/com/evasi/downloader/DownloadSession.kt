@@ -9,6 +9,7 @@ import com.evasi.downloader.ui.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,8 +43,9 @@ internal class DownloadSession(
     private var committed = false
     private var disarmed = false
     private var controlsVisible = false
-    private var remainingMs = 1500L
-    private var deadline = 0L
+    private var countdownDuration: Long? = null
+    private var remainingMs = 0L
+    private var resumedAt = 0L
     private var timer: Job? = null
     private var resolver: Job? = null
     private var transfer: Job? = null
@@ -60,7 +62,7 @@ internal class DownloadSession(
         selected = null
         committed = source == Source.Share
         disarmed = committed
-        remainingMs = 1500L
+        countdownDuration = null
         controlsVisible = false
         screen = ScreenState(
             source = source, phase = if (committed) Phase.Downloading else Phase.Preparing,
@@ -73,6 +75,10 @@ internal class DownloadSession(
     fun event(event: UiEvent) {
         when (event) {
             is UiEvent.ControlsReady -> if (generation == event.generation) {
+                if (countdownDuration == null) {
+                    remainingMs = event.timeoutMillis.coerceAtLeast(DEFAULT_AUTO_START_MS)
+                    countdownDuration = remainingMs
+                }
                 controlsVisible = true
                 maybeStartTimer()
             }
@@ -163,12 +169,21 @@ internal class DownloadSession(
             try {
                 for (index in saved.size until items.size) {
                     screen = screen.copy(item = index + 1, progress = null)
-                    val uri = backend.save(items[index], quality) { bytes, length ->
-                        if (length != null && length > 0) scope.launch {
-                            if (token == generation && screen.phase == Phase.Downloading && screen.item == index + 1) {
-                                screen = screen.copy(progress = (bytes.toDouble() / length).toFloat().coerceIn(0f, 1f))
+                    // Only this save attempt owns this channel. Late callbacks from a failed
+                    // attempt cannot report progress on the same item after Retry.
+                    val updates = Channel<Float>(Channel.CONFLATED)
+                    val collector = launch {
+                        for (progress in updates) screen = screen.copy(progress = progress)
+                    }
+                    val uri = try {
+                        backend.save(items[index], quality) { bytes, length ->
+                            if (length != null && length > 0) {
+                                updates.trySend((bytes.toDouble() / length).toFloat().coerceIn(0f, 1f))
                             }
                         }
+                    } finally {
+                        collector.cancel()
+                        updates.cancel()
                     }
                     if (token != generation) return@launch
                     saved += uri
@@ -188,19 +203,23 @@ internal class DownloadSession(
 
     private fun maybeStartTimer() {
         if (!waiting() || disarmed || !screen.autoStart || !controlsVisible || timer?.isActive == true) return
-        deadline = elapsedMs() + remainingMs
+        val duration = countdownDuration ?: return
+        if (duration == Long.MAX_VALUE) return // Accessibility requests an indefinite timeout.
+        resumedAt = elapsedMs()
         timer = scope.launch {
             while (waiting() && controlsVisible && !disarmed) {
-                remainingMs = (deadline - elapsedMs()).coerceAtLeast(0)
-                if (remainingMs == 0L) { commit(); return@launch }
-                screen = screen.copy(countdown = remainingMs / 1500f)
-                delay(minOf(remainingMs, 25L))
+                val left = timeLeft()
+                if (left == 0L) { commit(); return@launch }
+                screen = screen.copy(countdown = left.toFloat() / duration)
+                delay(minOf(left, (duration / 60).coerceAtLeast(25L)))
             }
         }
     }
 
+    private fun timeLeft() = (remainingMs - (elapsedMs() - resumedAt)).coerceAtLeast(0L)
+
     private fun pauseTimer() {
-        if (timer != null) remainingMs = (deadline - elapsedMs()).coerceIn(0L, 1500L)
+        if (timer != null) remainingMs = timeLeft()
         timer?.cancel()
         timer = null
         if (screen.countdown != null) screen = screen.copy(countdown = null)

@@ -1,6 +1,7 @@
 package com.evasi.downloader
 
 import android.Manifest
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -16,12 +17,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.getValue
 import com.evasi.downloader.ui.DownloaderApp
 import com.evasi.downloader.ui.Phase
 import com.evasi.downloader.ui.Source
 import com.evasi.downloader.ui.UiEvent
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val model by viewModels<DownloadModel>()
@@ -43,7 +47,7 @@ class MainActivity : ComponentActivity() {
             shareForeground = savedInstanceState?.getBoolean("share_foreground") ?: false
         }
         setContent {
-            val state by model.session.state.collectAsState()
+            val state by model.session.state.collectAsStateWithLifecycle()
             DownloaderApp(state, ::onUiEvent)
         }
     }
@@ -60,30 +64,8 @@ class MainActivity : ComponentActivity() {
         shareForeground = incoming.action == Intent.ACTION_SEND || incoming.action == Intent.ACTION_SEND_MULTIPLE
         if (!shareForeground) return
         model.prefs.markShared(System.currentTimeMillis())
-        val value = runCatching { sharedInput(incoming) }.getOrDefault(Incoming.Invalid)
+        val value = try { sharedInput(incoming) } catch (_: RuntimeException) { Incoming.Invalid }
         model.session.accept(value, Source.Share)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun sharedInput(intent: Intent): Incoming {
-        val payload = intent.clipData
-        val multiple = intent.action == Intent.ACTION_SEND_MULTIPLE
-        val streams = if (multiple) {
-            if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
-            else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
-        } else {
-            val stream = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-            listOfNotNull(stream)
-        }
-        val clipItems = (0 until (payload?.itemCount ?: 0)).map { payload!!.getItemAt(it) }
-        val uris = (streams + listOfNotNull(intent.data) + clipItems.mapNotNull { it.uri })
-            .filter { it.scheme == "content" }.distinct().map { it.toString() }
-        if (uris.isNotEmpty()) return Incoming.Files(if (multiple) uris else uris.take(1), intent.type)
-        val texts = listOf(intent.getCharSequenceExtra(Intent.EXTRA_TEXT), intent.dataString) +
-            clipItems.flatMap { listOf(it.text, it.uri?.toString()) } + intent.getStringExtra(Intent.EXTRA_SUBJECT)
-        val link = SharedLinks.extract(texts.filterNotNull().joinToString(" "))
-        return link?.let(Incoming::Link) ?: Incoming.Invalid
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -101,21 +83,22 @@ class MainActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    private fun readClipboard(manual: Boolean) {
+    internal fun readClipboard(manual: Boolean) {
         val state = model.session.state.value
         if (!manual && state.phase == Phase.Downloading) return
         val record = model.prefs.clipboard
-        val clip = runCatching {
-            val stamp = clipboard.primaryClipDescription?.timestamp
-            if (!manual && stamp != null && stamp > 0 &&
-                (stamp <= record.sharedAt || stamp == record.lastTimestamp)) return
-            clipboard.primaryClip
-        }.getOrNull()
+        val clip = try {
+            if (!manual) {
+                val description = clipboard.primaryClipDescription
+                if (description?.isSensitive() == true) return
+                val stamp = description?.timestamp ?: 0L
+                if (stamp > 0 && (stamp <= record.sharedAt || stamp == record.lastTimestamp)) return
+            }
+            // The clip may change between the description and content reads.
+            clipboard.primaryClip?.also { if (!manual && it.description.isSensitive()) return }
+        } catch (_: RuntimeException) { null }
         val link = clip?.let {
-            val text = (0 until it.itemCount).map { index -> it.getItemAt(index) }
-                .flatMap { item -> listOfNotNull(item.text, item.uri?.toString()) }
-                .joinToString(" ")
-            SharedLinks.extract(text)
+            SharedLinks.extractFrom(it.items().flatMap { item -> sequenceOf(item.text, item.uri?.toString()) })
         }
         if (link == null) {
             if (manual) toast(R.string.paste_missing)
@@ -131,9 +114,19 @@ class MainActivity : ComponentActivity() {
     private fun onUiEvent(event: UiEvent) {
         when (event) {
             UiEvent.Paste -> readClipboard(manual = true)
-            UiEvent.OpenGallery -> model.session.galleryUri?.let {
-                runCatching { startActivity(viewMedia(this, Uri.parse(it))) }
-                    .onFailure { toast(R.string.gallery_unavailable) }
+            UiEvent.OpenGallery -> model.session.galleryUri?.let { saved ->
+                lifecycleScope.launch {
+                    val viewer = viewMedia(this@MainActivity, Uri.parse(saved))
+                    if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@launch
+                    if (viewer == null) toast(R.string.gallery_unavailable)
+                    else try {
+                        startActivity(viewer)
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        toast(R.string.gallery_unavailable)
+                    } catch (_: SecurityException) {
+                        toast(R.string.gallery_unavailable)
+                    }
+                }
             }
             UiEvent.NotificationSettings -> {
                 if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -155,3 +148,6 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(message: Int) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
+
+// The framework's sensitive-clip extras key can also be set by senders on API 29–32.
+private fun ClipDescription.isSensitive() = extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true

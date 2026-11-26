@@ -12,36 +12,67 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.UUID
 
-internal class GalleryStore(context: Context) {
+internal class GalleryStore(context: Context, private val recovery: Recovery = processRecovery) {
     private val resolver = context.contentResolver
     private val pending = context.getSharedPreferences("gallery_pending", Context.MODE_PRIVATE)
 
-    private companion object {
-        val lock = Any()
-        var recovered = false
-        const val album = "eVasi Dowlander App"
+    // The first save/recovery takes one snapshot per process. Later journal entries belong
+    // to live writes and must not be picked up by another repository instance's recovery.
+    internal class Recovery {
+        var backlog: LinkedHashSet<String>? = null
+        var retryAt = 0L
     }
 
-    // Only rows inserted by this app are journaled. A completed row survives a
-    // process death between publication and removing its journal entry.
-    fun recover() = synchronized(lock) {
-        if (recovered) return@synchronized
-        for (key in pending.all.keys) {
-            val row = Uri.parse(key)
-            runCatching {
-                val isPending = resolver.query(row, arrayOf(MediaStore.MediaColumns.IS_PENDING), null, null, null)
-                    ?.use { it.moveToFirst() && it.getInt(0) == 1 } ?: return@runCatching
-                if (isPending) resolver.delete(row, null, null)
-                pending.edit().remove(key).apply()
+    private companion object {
+        val processRecovery = Recovery()
+        const val album = "eVasi Downloader App"
+        const val retryDelayMs = 5_000L
+    }
+
+    fun recover() = synchronized(recovery) {
+        val backlog = recovery.backlog ?: pending.all.keys.toCollection(linkedSetOf()).also { recovery.backlog = it }
+        if (backlog.isEmpty() || SystemClock.elapsedRealtime() < recovery.retryAt) return@synchronized
+        val completed = pending.edit()
+        val rows = backlog.iterator()
+        while (rows.hasNext()) {
+            val key = rows.next()
+            val finished = try {
+                recoverRow(key)
+            } catch (_: RuntimeException) {
+                false // Provider unavailable; keep the journal entry for a later call.
+            }
+            if (finished) {
+                completed.remove(key)
+                rows.remove()
             }
         }
-        recovered = true
+        completed.apply()
+        if (backlog.isNotEmpty()) recovery.retryAt = SystemClock.elapsedRealtime() + retryDelayMs
     }
 
-    fun discard(row: Uri) {
-        runCatching {
-            resolver.delete(row, null, null)
-            pending.edit().remove(row.toString()).apply()
+    private fun recoverRow(key: String): Boolean {
+        val row = Uri.parse(key)
+        val isPending = resolver.query(row, arrayOf(MediaStore.MediaColumns.IS_PENDING), null, null, null)?.use {
+            if (!it.moveToFirst()) return true // Row already gone.
+            it.getInt(0) == 1
+        } ?: return false
+        // true is the existing write journal format. A published row can survive a
+        // crash between MediaStore publication and the removal of that journal entry.
+        if (!isPending && pending.getBoolean(key, true)) return true
+        return resolver.delete(row, null, null) > 0
+    }
+
+    fun discard(row: Uri) = synchronized(recovery) {
+        val key = row.toString()
+        val deleted = try { resolver.delete(row, null, null) > 0 } catch (_: RuntimeException) { false }
+        if (deleted) {
+            pending.edit().remove(key).apply()
+            recovery.backlog?.remove(key)
+        } else {
+            // Cancellation may win just after publication, before the caller receives the result.
+            // Only this explicit rollback is allowed to delete such an unclaimed published row.
+            pending.edit().putBoolean(key, false).apply()
+            recovery.backlog?.add(key)
         }
     }
 
@@ -51,7 +82,11 @@ internal class GalleryStore(context: Context) {
     ): Uri {
         job.ensureActive()
         val stream = input.buffered(64 * 1024)
-        val format = MediaFormat.inspect(stream, declared)
+        val format = try {
+            MediaFormat.inspect(stream, declared)
+        } catch (error: IOException) {
+            throw MediaFailure(readFailure, error)
+        }
         if ((kind == MediaKind.VIDEO && !format.isVideo) || (kind == MediaKind.PHOTO && format.isVideo) ||
             (kind == MediaKind.GIF && !format.isVideo && format.extension !in setOf("gif", "webp", "avif"))) {
             throw MediaFailure(FailureReason.INVALID)
@@ -70,6 +105,7 @@ internal class GalleryStore(context: Context) {
                     job.ensureActive()
                     val count = try { stream.read(buffer) } catch (e: IOException) { throw MediaFailure(readFailure, e) }
                     if (count < 0) break
+                    if (count == 0 || (total != null && count > total - bytes)) throw MediaFailure(readFailure)
                     it.write(buffer, 0, count)
                     bytes += count
                     val now = SystemClock.elapsedRealtime()

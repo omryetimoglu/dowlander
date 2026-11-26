@@ -14,6 +14,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -82,19 +83,12 @@ internal class PlatformVideo(private val app: Context) {
         fun initialize(app: Context) {
             if (initialized) return
             try {
-                // The wrapper normally retains its unpacked zipapp forever, even across APK updates.
-                // Install the current APK's copy atomically before opening the runtime.
                 val dir = File(File(app.noBackupFilesDir, YoutubeDL.baseName), YoutubeDL.ytdlpDirName)
-                Files.createDirectories(dir.toPath())
-                val temp = Files.createTempFile(dir.toPath(), "yt-dlp", ".tmp")
-                try {
-                    app.resources.openRawResource(R.raw.ytdlp).use { input ->
-                        Files.copy(input, temp, StandardCopyOption.REPLACE_EXISTING)
-                    }
-                    Files.move(temp, File(dir, YoutubeDL.ytdlpBin).toPath(),
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-                } finally {
-                    Files.deleteIfExists(temp)
+                @Suppress("DEPRECATION") // Common API across the app's supported Android versions.
+                val updatedAt = app.packageManager.getPackageInfo(app.packageName, 0).lastUpdateTime
+                val apk = "${app.applicationInfo.sourceDir}:$updatedAt"
+                installPackagedExtractor(File(dir, YoutubeDL.ytdlpBin), apk) {
+                    app.resources.openRawResource(R.raw.ytdlp)
                 }
             } catch (error: IOException) {
                 throw MediaFailure(FailureReason.STORAGE, error)
@@ -103,6 +97,25 @@ internal class PlatformVideo(private val app: Context) {
             FFmpeg.init(app)
             initialized = true
         }
+    }
+}
+
+/** Install once per APK, including replacements that keep versionCode. A stale/partial marker is a cache miss. */
+internal fun installPackagedExtractor(target: File, apk: String, openResource: () -> InputStream) {
+    val dir = target.parentFile!!
+    val marker = File(dir, "${target.name}.installed")
+    fun stamp() = "$apk\n${target.length()}\n${target.lastModified()}"
+    if (target.isFile && target.length() > 0 && marker.isFile && marker.readText() == stamp()) return
+
+    Files.createDirectories(dir.toPath())
+    val temp = Files.createTempFile(dir.toPath(), "yt-dlp", ".tmp")
+    try {
+        val copied = openResource().use { Files.copy(it, temp, StandardCopyOption.REPLACE_EXISTING) }
+        if (copied == 0L) throw IOException("Empty packaged extractor")
+        Files.move(temp, target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        marker.writeText(stamp())
+    } finally {
+        Files.deleteIfExists(temp)
     }
 }
 

@@ -2,6 +2,7 @@ package com.evasi.downloader.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,8 +30,10 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -63,10 +67,7 @@ fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                         IconAction(Mark.Back, R.string.back) { settings = false }
                         Spacer(Modifier.width(6.dp))
                     } else {
-                        Box(Modifier.padding(start = 4.dp).size(38.dp).background(Ink, RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center) {
-                            Glyph(Mark.Logo, Color(0xFFB5F5CC), Modifier.size(23.dp))
-                        }
+                        BrandLogo(Modifier.padding(start = 4.dp).size(38.dp))
                         Spacer(Modifier.width(10.dp))
                     }
                     Text(
@@ -77,7 +78,7 @@ fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                     if (!settings) IconAction(Mark.Settings, R.string.settings) { settings = true }
                 }
                 HorizontalDivider(color = Line)
-                if (settings) SettingsContent(state, onEvent) { languagePanel = true }
+                if (settings) SettingsContent(state.language, state.autoStart, onEvent) { languagePanel = true }
                 else Home(state, onEvent)
             }
         }
@@ -87,6 +88,15 @@ fun DownloaderApp(state: ScreenState, onEvent: (UiEvent) -> Unit) {
         }
         if (!settings && state.qualitySheet) QualityPanel(state, onEvent)
     }
+}
+
+@Composable
+private fun BrandLogo(modifier: Modifier) {
+    Image(
+        painter = painterResource(R.drawable.brand_logo),
+        contentDescription = null,
+        modifier = modifier.clip(RoundedCornerShape(24)),
+    )
 }
 
 @Composable
@@ -119,7 +129,8 @@ private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                 Phase.Cancelled -> R.string.cancelled_title
             }
             val mark = when (state.phase) {
-                Phase.Idle, Phase.Downloading -> Mark.Download
+                Phase.Idle -> null
+                Phase.Downloading -> Mark.Download
                 Phase.Preparing, Phase.Ready -> Mark.Link
                 Phase.Saved -> Mark.Check
                 Phase.Failed -> Mark.Repeat
@@ -131,8 +142,12 @@ private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                 Phase.Saved -> savedText(state.savedCount)
                 else -> ""
             }
-            Box(Modifier.size(64.dp).background(Mint, RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
-                Glyph(mark, Accent, Modifier.size(31.dp))
+            if (mark == null) {
+                BrandLogo(Modifier.size(96.dp))
+            } else {
+                Box(Modifier.size(64.dp).background(Mint, RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
+                    Glyph(mark, Accent, Modifier.size(31.dp))
+                }
             }
             Spacer(Modifier.height(18.dp))
             Text(stringResource(title), Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
@@ -145,11 +160,12 @@ private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
             }
             if (state.source != Source.None && state.phase !in listOf(Phase.Idle, Phase.Saved)) {
                 Spacer(Modifier.height(18.dp))
-                SourceCard(state)
+                val albumCount = if (state.phase == Phase.Ready) state.total else 0
+                SourceCard(state.source, state.title, state.link, albumCount)
             }
             if (state.phase == Phase.Downloading) {
                 Spacer(Modifier.height(12.dp))
-                TransferProgress(state)
+                TransferProgress(state.item, state.total, state.progress)
             }
             if (state.savedCount > 0 && state.phase in listOf(Phase.Cancelled, Phase.Failed)) {
                 Spacer(Modifier.height(8.dp))
@@ -184,7 +200,7 @@ private fun ColumnScope.Home(state: ScreenState, onEvent: (UiEvent) -> Unit) {
                 Text(stringResource(R.string.countdown_hint), color = Muted, fontSize = 13.sp)
                 Rail(it)
             }
-            ClipboardActions(state, onEvent)
+            ClipboardActions(state.controlsGeneration, state.quality, state.qualitySheet, onEvent)
         }
     }
 }
@@ -206,9 +222,9 @@ private fun errorMessage(error: UiError?): Int = when (error) {
 }
 
 @Composable
-private fun SourceCard(state: ScreenState) {
-    val fromShare = state.source == Source.Share
-    val url = state.link.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
+private fun SourceCard(source: Source, title: String, link: String, albumCount: Int) {
+    val fromShare = source == Source.Share
+    val url = link.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
     Surface(modifier = Modifier.widthIn(max = 440.dp), color = Color.White,
         border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
@@ -217,10 +233,10 @@ private fun SourceCard(state: ScreenState) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(stringResource(if (fromShare) R.string.share_label else R.string.clipboard_label),
                     color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                if (state.title.isNotBlank() && state.title != url) Text(state.title, maxLines = 2,
+                if (title.isNotBlank() && title != url) Text(title, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (state.phase == Phase.Ready && state.total > 1)
-                    Text(stringResource(R.string.album_count, state.total), color = Ink, fontSize = 14.sp)
+                if (albumCount > 1)
+                    Text(pluralStringResource(R.plurals.album_count, albumCount, albumCount), color = Ink, fontSize = 14.sp)
                 if (url != null) Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Muted,
                     fontSize = 14.sp, lineHeight = 19.sp)
             }
@@ -229,19 +245,19 @@ private fun SourceCard(state: ScreenState) {
 }
 
 @Composable
-private fun TransferProgress(state: ScreenState) {
+private fun TransferProgress(item: Int, total: Int, progress: Float?) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (state.item > 0 && state.total > 0) Text(
-                stringResource(R.string.item_progress, state.item, state.total),
+            if (item > 0 && total > 0) Text(
+                stringResource(R.string.item_progress, item, total),
                 color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.weight(1f))
-            state.progress?.let {
+            progress?.let {
                 Text(stringResource(R.string.percentage, (it.coerceIn(0f, 1f) * 100).roundToInt()),
                     color = Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
         }
-        Rail(state.progress)
+        Rail(progress)
     }
 }
 
@@ -258,15 +274,26 @@ private fun Rail(progress: Float?) {
 }
 
 @Composable
-private fun ClipboardActions(state: ScreenState, onEvent: (UiEvent) -> Unit) {
-    var leftPlaced by remember(state.controlsGeneration) { mutableStateOf(false) }
-    var rightPlaced by remember(state.controlsGeneration) { mutableStateOf(false) }
+private fun ClipboardActions(
+    generation: Long,
+    quality: String?,
+    sheetOpen: Boolean,
+    onEvent: (UiEvent) -> Unit,
+) {
+    var leftPlaced by remember(generation) { mutableStateOf(false) }
+    var rightPlaced by remember(generation) { mutableStateOf(false) }
     val focused = LocalWindowInfo.current.isWindowFocused
+    val accessibility = LocalAccessibilityManager.current
     val event by rememberUpdatedState(onEvent)
-    val active = leftPlaced && rightPlaced && focused && !state.qualitySheet
-    DisposableEffect(state.controlsGeneration, active) {
-        val generation = state.controlsGeneration
-        if (active) event(UiEvent.ControlsReady(generation))
+    val active = leftPlaced && rightPlaced && focused && !sheetOpen
+    DisposableEffect(generation, active, accessibility) {
+        if (active) {
+            val timeout = accessibility?.calculateRecommendedTimeoutMillis(
+                originalTimeoutMillis = DEFAULT_AUTO_START_MS,
+                containsIcons = true, containsText = true, containsControls = true,
+            ) ?: DEFAULT_AUTO_START_MS
+            event(UiEvent.ControlsReady(generation, timeout.coerceAtLeast(DEFAULT_AUTO_START_MS)))
+        }
         onDispose { if (active) event(UiEvent.ControlsHidden(generation)) }
     }
     BoxWithConstraints {
@@ -275,14 +302,14 @@ private fun ClipboardActions(state: ScreenState, onEvent: (UiEvent) -> Unit) {
             verticalAlignment = Alignment.Bottom) {
             val qualityModifier = Modifier.weight(1f).onGloballyPositioned {
                 leftPlaced = !it.boundsInWindow().isEmpty
-            }.pointerInput(state.controlsGeneration) {
+            }.pointerInput(generation) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     event(UiEvent.QualityTouched)
                 }
             }
             Action(R.string.select_quality, if (showIcons) Mark.Sliders else null, qualityModifier,
-                primary = false, label = state.quality) { onEvent(UiEvent.OpenQuality) }
+                primary = false, label = quality) { onEvent(UiEvent.OpenQuality) }
             Action(R.string.start_download, if (showIcons) Mark.Download else null,
                 Modifier.weight(1f).onGloballyPositioned {
                     rightPlaced = !it.boundsInWindow().isEmpty
@@ -293,23 +320,25 @@ private fun ClipboardActions(state: ScreenState, onEvent: (UiEvent) -> Unit) {
 
 @Composable
 private fun Action(
-    resource: Int, icon: Mark?, modifier: Modifier = Modifier.fillMaxWidth(),
+    resource: Int, icon: Mark?, modifier: Modifier = Modifier,
     primary: Boolean = true, label: String? = null, onClick: () -> Unit,
 ) {
+    val actionName = stringResource(resource)
     val shape = RoundedCornerShape(14.dp)
     val foreground = if (primary) Color.White else Ink
     Row(
-        modifier.heightIn(min = 56.dp).clip(shape)
+        modifier.fillMaxWidth().heightIn(min = 56.dp).clip(shape)
             .background(if (primary) Accent else Color.White)
             .then(if (primary) Modifier else Modifier.border(1.dp, Line, shape))
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 11.dp),
+            .clickable(role = Role.Button, onClickLabel = if (label != null) actionName else null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             Glyph(icon, foreground, Modifier.size(19.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(label ?: stringResource(resource), color = foreground, fontSize = 15.sp, lineHeight = 20.sp,
+        Text(label ?: actionName, color = foreground, fontSize = 15.sp, lineHeight = 20.sp,
             fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
     }
 }
@@ -350,7 +379,7 @@ private fun QualityPanel(state: ScreenState, onEvent: (UiEvent) -> Unit) {
             else -> {
                 Text(stringResource(R.string.quality_hint), color = Muted, fontSize = 15.sp)
                 Spacer(Modifier.height(10.dp))
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp).selectableGroup()) {
                     items(state.qualityOptions) { option ->
                         ChoiceRow(option, option == state.quality) { onEvent(UiEvent.SelectQuality(option)) }
                     }
@@ -361,14 +390,14 @@ private fun QualityPanel(state: ScreenState, onEvent: (UiEvent) -> Unit) {
 }
 
 @Composable
-private fun SettingsContent(state: ScreenState, onEvent: (UiEvent) -> Unit, openLanguage: () -> Unit) {
+private fun SettingsContent(language: String, autoStart: Boolean, onEvent: (UiEvent) -> Unit, openLanguage: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Surface(color = Color.White, border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(18.dp)) {
             SettingRow(Mark.Globe, stringResource(R.string.language),
-                stringResource(if (state.language == "tr") R.string.turkish else R.string.english),
+                stringResource(if (language == "tr") R.string.turkish else R.string.english),
                 Modifier.clickable(role = Role.Button, onClick = openLanguage)) {
                 Glyph(Mark.Chevron, Muted, Modifier.size(18.dp))
             }
@@ -378,9 +407,9 @@ private fun SettingsContent(state: ScreenState, onEvent: (UiEvent) -> Unit, open
         Surface(color = Color.White, border = BorderStroke(1.dp, Line), shape = RoundedCornerShape(18.dp)) {
             Column {
                 SettingRow(Mark.Download, stringResource(R.string.auto_start), stringResource(R.string.auto_start_hint),
-                    Modifier.toggleable(value = state.autoStart, role = Role.Switch,
+                    Modifier.toggleable(value = autoStart, role = Role.Switch,
                         onValueChange = { onEvent(UiEvent.SetAutoStart(it)) })) {
-                    Switch(checked = state.autoStart, onCheckedChange = null)
+                    Switch(checked = autoStart, onCheckedChange = null)
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Line)
                 SettingRow(Mark.Bell, stringResource(R.string.notification_settings),
@@ -415,8 +444,10 @@ private fun SettingRow(mark: Mark, title: String, subtitle: String, modifier: Mo
 @Composable
 private fun LanguagePanel(current: String, dismiss: () -> Unit, select: (String) -> Unit) {
     Panel(R.string.language, dismiss) {
-        ChoiceRow(stringResource(R.string.english), current == "en") { select("en") }
-        ChoiceRow(stringResource(R.string.turkish), current == "tr") { select("tr") }
+        Column(Modifier.selectableGroup()) {
+            ChoiceRow(stringResource(R.string.english), current == "en") { select("en") }
+            ChoiceRow(stringResource(R.string.turkish), current == "tr") { select("tr") }
+        }
     }
 }
 

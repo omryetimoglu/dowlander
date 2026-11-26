@@ -159,7 +159,7 @@ class AlbumDownloadTest {
             assertTrue(cursor.moveToFirst())
             assertEquals(asset.mime, cursor.getString(0))
             val folder = if (video) "Movies" else "Pictures"
-            assertEquals("$folder/eVasi Dowlander App/", cursor.getString(1))
+            assertEquals("$folder/eVasi Downloader App/", cursor.getString(1))
             assertEquals(0, cursor.getInt(2))
         }
         assertArrayEquals(asset.url, asset.bytes, requireNotNull(resolver.openInputStream(row)).use { it.readBytes() })

@@ -46,7 +46,7 @@ class LiveSourceTest {
         val connection = url.openConnection().apply {
             connectTimeout = 15_000
             readTimeout = 30_000
-            setRequestProperty("User-Agent", "EvasiVideoDowlander/1.0 (verification)")
+            setRequestProperty("User-Agent", "EvasiVideoDownloader/1.0 (verification)")
             setRequestProperty("Accept-Encoding", "identity")
         }
         return connection.getInputStream().use { block(it, connection.contentLengthLong) }

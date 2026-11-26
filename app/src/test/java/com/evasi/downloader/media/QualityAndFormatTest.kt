@@ -34,6 +34,24 @@ class QualityAndFormatTest {
         }
     }
 
+    @Test fun transportStreamsRequireRepeatedPacketHeadersAndPreserveBytes() {
+        for ((stride, offset) in listOf(188 to 0, 192 to 4, 204 to 0)) {
+            val bytes = ByteArray(3 * stride)
+            repeat(3) { packet ->
+                bytes[packet * stride + offset] = 0x47
+                bytes[packet * stride + offset + 3] = 0x10
+            }
+            val stream = bytes.inputStream().buffered()
+            assertEquals("video/mp2t", MediaFormat.inspect(stream, "video/mp2t").mime)
+            assertArrayEquals(bytes, stream.readBytes())
+            bytes[stride + offset] = 0
+            assertThrows(MediaFailure::class.java) { MediaFormat.inspect(bytes.inputStream().buffered(), "video/mp2t") }
+        }
+        assertThrows(MediaFailure::class.java) {
+            MediaFormat.inspect("Gateway error".byteInputStream().buffered(), "video/mp2t")
+        }
+    }
+
     @Test fun aWronglyLabeledErrorPageOrEmptyStreamIsRejected() {
         for (body in listOf("", "<html><body>Sign in</body></html>")) {
             val ex = assertThrows(MediaFailure::class.java) {

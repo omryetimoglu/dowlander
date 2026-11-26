@@ -67,8 +67,7 @@ internal object XPost {
 
     private fun photoItem(url: String, metadata: JSONObject?, name: String): MediaItem {
         val uri = runCatching { URI(url) }.getOrNull() ?: throw MediaFailure(FailureReason.UNSUPPORTED)
-        if (!uri.scheme.equals("https", true) || !uri.host.equals("pbs.twimg.com", true) ||
-            uri.rawUserInfo != null || uri.port != -1) throw MediaFailure(FailureReason.UNSUPPORTED)
+        if (!MediaCdn.X_PHOTO.accepts(uri)) throw MediaFailure(FailureReason.UNSUPPORTED)
         val path = imagePath.matchEntire(uri.rawPath.orEmpty()) ?: throw MediaFailure(FailureReason.UNSUPPORTED)
         val format = path.groupValues[2].ifEmpty {
             uri.rawQuery.orEmpty().split('&').firstOrNull { it.startsWith("format=") }?.substringAfter('=').orEmpty()
@@ -79,7 +78,7 @@ internal object XPost {
         val width = metadata?.optInt("width") ?: 0
         val height = metadata?.optInt("height") ?: 0
         val size = if (width > 0 && height > 0) Quality(width, height) else null
-        return MediaItem(MediaKind.PHOTO, listOf(MediaSource(original, quality = size, name = name)))
+        return MediaItem(MediaKind.PHOTO, listOf(MediaSource(original, quality = size, name = name, deliveryCdn = MediaCdn.X_PHOTO)))
     }
 
     private fun videoItem(kind: MediaKind, variants: JSONArray?, name: String, urlKey: String, typeKey: String): MediaItem {
@@ -88,12 +87,11 @@ internal object XPost {
             if (variant.optString(typeKey) != "video/mp4") return@mapNotNull null
             val url = variant.optString(urlKey)
             val uri = runCatching { URI(url) }.getOrNull() ?: return@mapNotNull null
-            if (!uri.scheme.equals("https", true) || !uri.host.equals("video.twimg.com", true) ||
-                uri.rawUserInfo != null || uri.port != -1) return@mapNotNull null
+            if (!MediaCdn.X_VIDEO.accepts(uri)) return@mapNotNull null
             val size = dimensions.find(uri.path.orEmpty())?.destructured?.let { (width, height) ->
                 Quality(width.toInt(), height.toInt())
             }
-            MediaSource(url, "video/mp4", size, name) to variant.optLong("bitrate")
+            MediaSource(url, "video/mp4", size, name, deliveryCdn = MediaCdn.X_VIDEO) to variant.optLong("bitrate")
         }.sortedWith(compareByDescending<Pair<MediaSource, Long>> { it.second }
             .thenByDescending { it.first.quality?.let { size -> size.width.toLong() * size.height } ?: 0L })
             .map { it.first }.distinctBy { it.uri }

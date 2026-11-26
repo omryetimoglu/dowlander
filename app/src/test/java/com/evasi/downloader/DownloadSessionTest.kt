@@ -2,8 +2,11 @@ package com.evasi.downloader
 
 import com.evasi.downloader.media.*
 import com.evasi.downloader.ui.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -43,10 +46,103 @@ class DownloadSessionTest {
         }
     }
 
-    private fun TestScope.session(backend: Backend, autoStart: Boolean = true) =
+    private fun TestScope.session(backend: TransferBackend, autoStart: Boolean = true) =
         DownloadSession(this, backend, "en", autoStart) { testScheduler.currentTime }
 
     private fun DownloadSession.placed() = event(UiEvent.ControlsReady(state.value.controlsGeneration))
+
+    @Test fun accessibilityTimeoutCountsVisibleTimeOncePerLink() = runTest {
+        val backend = Backend(samplePost())
+        val session = session(backend)
+        session.accept(a, Source.Clipboard)
+        val generation = session.state.value.controlsGeneration
+        session.event(UiEvent.ControlsReady(generation, 6000L))
+        advanceTimeBy(2000)
+        session.event(UiEvent.ControlsHidden(generation))
+        advanceTimeBy(10000)
+        session.placed()
+        advanceTimeBy(3999)
+        runCurrent()
+        assertEquals(Phase.Ready, session.state.value.phase)
+        assertTrue(backend.writes.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(1, backend.writes.size)
+        session.accept(b, Source.Clipboard)
+        session.placed()
+        advanceTimeBy(1500)
+        runCurrent()
+        assertEquals(2, backend.writes.size)
+    }
+
+    @Test fun indefiniteAccessibilityTimeoutWaitsForExplicitStart() = runTest {
+        val backend = Backend(samplePost())
+        val session = session(backend)
+        session.accept(a, Source.Clipboard)
+        session.event(UiEvent.ControlsReady(session.state.value.controlsGeneration, Long.MAX_VALUE))
+        advanceUntilIdle()
+        assertEquals(Phase.Ready, session.state.value.phase)
+        assertNull(session.state.value.countdown)
+        assertTrue(backend.writes.isEmpty())
+        session.event(UiEvent.Start)
+        advanceUntilIdle()
+        assertEquals(1, backend.writes.size)
+    }
+
+    @Test fun progressCallbacksFromFailedAttemptCannotAdvanceRetriedItem() = runTest {
+        val callbacks = mutableListOf<(Long, Long?) -> Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val backend = object : TransferBackend {
+            override suspend fun resolve(input: Incoming) = samplePost()
+            override suspend fun save(item: MediaItem, quality: Quality?, progress: (Long, Long?) -> Unit): String {
+                callbacks += progress
+                if (callbacks.size == 1) throw MediaFailure(FailureReason.NETWORK)
+                finish.await()
+                return "content://media/1"
+            }
+        }
+        val session = session(backend)
+        session.accept(a, Source.Share)
+        runCurrent()
+        assertEquals(Phase.Failed, session.state.value.phase)
+        session.event(UiEvent.Retry)
+        runCurrent()
+        callbacks.last()(25, 100)
+        callbacks.first()(95, 100)
+        runCurrent()
+        assertEquals(0.25f, session.state.value.progress)
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(Phase.Saved, session.state.value.phase)
+    }
+
+    @Test fun supersededResolverCannotPublishEvenWhenItReturnsAfterCancellation() = runTest {
+        val releaseOld = CompletableDeferred<Unit>()
+        val writes = mutableListOf<MediaItem>()
+        val oldPost = samplePost(2)
+        val latestPost = samplePost(1).copy(title = "latest")
+        val backend = object : TransferBackend {
+            override suspend fun resolve(input: Incoming): MediaPost {
+                if (input == b) return latestPost
+                withContext(NonCancellable) { releaseOld.await() }
+                return oldPost
+            }
+            override suspend fun save(item: MediaItem, quality: Quality?, progress: (Long, Long?) -> Unit): String {
+                writes += item
+                return "content://media/1"
+            }
+        }
+        val session = session(backend)
+        session.accept(a, Source.Share)
+        runCurrent()
+        session.accept(b, Source.Share)
+        runCurrent()
+        releaseOld.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("latest", session.state.value.title)
+        assertEquals(latestPost.items, writes)
+        assertEquals(1, session.state.value.savedCount)
+    }
 
     @Test fun deadlineStartsOnlyWhenBothControlsArePlacedAndSurvivesRotation() = runTest {
         val backend = Backend(samplePost())

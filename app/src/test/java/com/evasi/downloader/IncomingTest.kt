@@ -27,11 +27,22 @@ class IncomingTest {
     }
 
     @Test fun ignoresTheOldClipboardAfterProcessingOrReceivingAShare() {
-        val history = ClipboardRecord("https://example.org/a", 1000, 2000)
+        val history = ClipboardRecord(ClipboardRecord.fingerprint("https://example.org/a"), 1000, 2000)
         assertFalse(history.isNew("https://example.org/a", 1000))
         assertFalse(history.isNew("https://example.org/another-old-clip", 1500))
         assertTrue(history.isNew("https://example.org/a", 3000))
         assertTrue(history.isNew("https://example.org/b", 3001))
-        assertFalse(ClipboardRecord("same", 0, -1).isNew("same", 0))
+        assertFalse(ClipboardRecord(ClipboardRecord.fingerprint("same"), 0, -1).isNew("same", 0))
+    }
+
+    @Test fun preservesBalancedUrlParenthesesAndStopsAtFirstPostAcrossFields() {
+        val post = "https://mastodon.social/@example/12?ref=(share)"
+        val fields = sequence {
+            yield("See https://example.org/")
+            yield("($post)).")
+            error("Unnecessary field was read after finding a post")
+        }
+        assertEquals(post, SharedLinks.extractFrom(fields))
+        assertEquals("https://example.org/a(b)", SharedLinks.extract("https://example.org/a(b)" + ")".repeat(256)))
     }
 }

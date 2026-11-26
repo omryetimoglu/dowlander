@@ -12,14 +12,23 @@ android {
         applicationId = "com.evasi.downloader"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // The downloadable GitHub APK updates the original standalone test installation.
     if (providers.gradleProperty("githubApk").isPresent) {
         buildTypes.getByName("debug").applicationIdSuffix = ".xtest"
+    }
+
+    // AGP 8.7 exposes APK filenames through the public ApkVariantOutput API.
+    applicationVariants.all {
+        if (buildType.name == "debug") {
+            outputs.withType<com.android.build.gradle.api.ApkVariantOutput>().all {
+                outputFileName = "eVasiApp.apk"
+            }
+        }
     }
 
     // Python, QuickJS and FFmpeg must be executable files in nativeLibraryDir.
@@ -31,6 +40,9 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // The in-app language picker must work offline even when the system uses another language.
+    bundle.language.enableSplit = false
 
     sourceSets.getByName("test").java.srcDir("src/sharedTest/java")
     sourceSets.getByName("androidTest").java.srcDir("src/sharedTest/java")
@@ -65,6 +77,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

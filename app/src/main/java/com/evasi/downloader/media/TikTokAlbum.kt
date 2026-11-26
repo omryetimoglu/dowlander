@@ -7,8 +7,6 @@ import java.net.URI
 internal object TikTokAlbum {
     private val postPath = Regex("/@[A-Za-z0-9_.-]+/(photo|video)/([0-9]+)/?")
     private val shortPath = Regex("/t/[A-Za-z0-9_-]+/?")
-    private val roots = setOf("tiktokcdn.com", "tiktokcdn-us.com", "tiktokcdn-eu.com", "tiktokcdn-in.com",
-        "tiktokcdn-us-1.com", "tiktokv.com", "tiktok.com", "byteoversea.com", "ibytedtos.com")
     private val script = Regex("""<script\b[^>]*?\sid\s*=\s*["'](__UNIVERSAL_DATA_FOR_REHYDRATION__|SIGI_STATE|sigi-persisted-data)["'][^>]*>""",
         RegexOption.IGNORE_CASE)
 
@@ -114,15 +112,13 @@ internal object TikTokAlbum {
             val height = image.optInt("imageHeight")
             val quality = if (width > 0 && height > 0) Quality(width, height) else null
             MediaItem(MediaKind.PHOTO, listOf(MediaSource(url, quality = quality, name = "TikTok-$id-${index + 1}",
-                referer = "https://www.tiktok.com/")))
+                referer = "https://www.tiktok.com/", deliveryCdn = MediaCdn.TIKTOK)))
         }
         return MediaPost(items, item.optString("desc").take(120))
     }
 
     private fun isImageUrl(value: String): Boolean {
         val uri = runCatching { URI(value) }.getOrNull() ?: return false
-        val host = uri.host?.lowercase() ?: return false
-        return uri.scheme.equals("https", true) && uri.rawUserInfo == null && uri.port in setOf(-1, 443) &&
-            roots.any { host == it || host.endsWith(".$it") }
+        return MediaCdn.TIKTOK.accepts(uri)
     }
 }

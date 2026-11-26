@@ -121,14 +121,12 @@ internal object FacebookAlbum {
         for (key in keys) {
             val image = obj.optJSONObject(key) ?: continue
             val uri = runCatching { URI(image.optString("uri")) }.getOrNull() ?: continue
-            val host = uri.host?.lowercase() ?: continue
-            if (uri.scheme != "https" || uri.userInfo != null || uri.port !in setOf(-1, 443) ||
-                !(host.endsWith(".fbcdn.net") || host.endsWith(".fbsbx.com"))) continue
+            if (!MediaCdn.FACEBOOK.accepts(uri)) continue
             val w = image.optInt("width")
             val h = image.optInt("height")
             val size = if (w > 0 && h > 0) Quality(w, h) else null
             return MediaItem(MediaKind.PHOTO, listOf(MediaSource(uri.toString(), quality = size,
-                name = "Facebook-$id", referer = "https://www.facebook.com/")))
+                name = "Facebook-$id", referer = "https://www.facebook.com/", deliveryCdn = MediaCdn.FACEBOOK)))
         }
         return null
     }

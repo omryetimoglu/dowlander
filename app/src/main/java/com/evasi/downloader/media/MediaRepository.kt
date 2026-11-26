@@ -155,7 +155,8 @@ class MediaRepository internal constructor(
                         gallery.write(stream, source.mime, source.name, sharedInfo(uri).second,
                             FailureReason.INVALID, null, job, onInsert, onProgress)
                     }
-                    "https" -> http(URI(source.uri), "image/*, video/*, application/octet-stream", job, referer = source.referer) { response ->
+                    "https" -> http(URI(source.uri), "image/*, video/*, application/octet-stream", job,
+                        referer = source.referer, deliveryCdn = source.deliveryCdn) { response ->
                         response.inputStream.use { stream ->
                             val total = response.contentLengthLong.takeIf { it >= 0 }
                             gallery.write(stream, response.contentType?.substringBefore(';'), source.name,
@@ -196,7 +197,7 @@ class MediaRepository internal constructor(
 
     private fun <T> http(
         start: URI, accept: String, job: Job, browser: Boolean = false, referer: String? = null,
-        allowedHosts: Set<String>? = null, block: (HttpURLConnection) -> T,
+        allowedHosts: Set<String>? = null, deliveryCdn: MediaCdn? = null, block: (HttpURLConnection) -> T,
     ): T {
         var target = start
         try {
@@ -208,6 +209,7 @@ class MediaRepository internal constructor(
                 if (allowedHosts != null && (target.port !in setOf(-1, 443) || allowedHosts.none {
                     target.host.equals(it, true) || target.host.endsWith(".$it", true)
                 })) throw MediaFailure(FailureReason.UNAVAILABLE)
+                if (deliveryCdn != null && !deliveryCdn.accepts(target)) throw MediaFailure(FailureReason.UNAVAILABLE)
                 val connection = openConnection(target)
                 try {
                     connection.instanceFollowRedirects = false
@@ -217,7 +219,7 @@ class MediaRepository internal constructor(
                     connection.setRequestProperty("Accept-Encoding", "identity")
                     connection.setRequestProperty("User-Agent", if (browser || referer != null)
                         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-                        else "eVasiDowlanderApp/1.2 (Android)")
+                        else "eVasiDownloaderApp/1.2 (Android)")
                     if (referer != null) connection.setRequestProperty("Referer", referer)
                     when (val status = connection.responseCode) {
                         200 -> return block(connection)

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">eVasi Dowlander App</string>
+    <string name="app_name">eVasi Downloader App</string>
     <string name="settings">Settings</string>
     <string name="language">Language</string>
     <string name="english">English</string>
@@ -9,7 +9,7 @@
     <string name="close">Close</string>
     <string name="download_settings">Downloads</string>
     <string name="auto_start">Auto-start copied links</string>
-    <string name="auto_start_hint">Start after 1.5 seconds when you open a copied post.</string>
+    <string name="auto_start_hint">Start after 1.5 seconds, or longer if set in accessibility settings.</string>
     <string name="notification_settings">Download notifications</string>
     <string name="notification_settings_hint">Manage progress and completion alerts.</string>
     <string name="notification_channel">Downloads</string>
@@ -37,7 +37,10 @@
         <item quantity="one">%d item saved</item>
         <item quantity="other">%d items saved</item>
     </plurals>
-    <string name="album_count">%1$d items in this album</string>
+    <plurals name="album_count">
+        <item quantity="one">%1$d item in this album</item>
+        <item quantity="other">%1$d items in this album</item>
+    </plurals>
     <string name="item_progress">Item %1$d of %2$d</string>
     <string name="percentage">%1$d%%</string>
     <string name="open_gallery">Open in gallery</string>
